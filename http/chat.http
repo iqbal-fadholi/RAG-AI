@@ -1,0 +1,7 @@
+### Chat with the RAG agent
+POST http://localhost:3000/api/chat
+Content-Type: application/json
+
+{
+  "question": "What information does the sample document contain?"
+}

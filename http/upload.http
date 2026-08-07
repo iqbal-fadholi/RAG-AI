@@ -1,0 +1,11 @@
+### Upload a file for ingestion
+POST http://localhost:3000/api/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="example.txt"
+Content-Type: text/plain
+
+This is a sample document for RAG ingestion.
+It contains information about how to use the system.
+--WebAppBoundary--

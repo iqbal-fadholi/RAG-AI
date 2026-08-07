@@ -40,19 +40,51 @@ app.post('/api/chat', async (req, res): Promise<any> => {
       return res.status(400).json({ error: 'Question is required' });
     }
 
-    // Run the LangGraph agent
+    // Set headers for SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    
+    // Flush the headers immediately
+    res.flushHeaders();
+
     console.log(`Starting LangGraph for question: "${question}"`);
     const initialState = { question, documents: [], answer: '' };
     
-    const finalState = await appGraph.invoke(initialState);
+    // Stream events
+    const stream = await appGraph.streamEvents(initialState, { version: 'v2' });
     
-    res.json({
-      answer: finalState.answer,
-      usedDocuments: finalState.documents?.map((d: any) => d.metadata),
-    });
+    for await (const event of stream) {
+      if (event.event === 'on_chain_start') {
+        // Filter for specific node starts
+        if (['retrieve', 'gradeDocuments', 'generate', 'rewrite'].includes(event.name)) {
+          res.write(`event: progress\ndata: ${JSON.stringify({ step: event.name })}\n\n`);
+        }
+      } else if (event.event === 'on_chat_model_stream') {
+        const chunk = event.data?.chunk;
+        if (chunk && chunk.content) {
+          res.write(`event: token\ndata: ${JSON.stringify({ token: chunk.content })}\n\n`);
+        }
+      } else if (event.event === 'on_chain_end' && event.name === 'LangGraph') {
+        // Send metadata at the end of the entire graph
+        const finalState = event.data?.output;
+        if (finalState && finalState.documents) {
+          const usedDocuments = finalState.documents.map((d: any) => d.metadata);
+          res.write(`event: metadata\ndata: ${JSON.stringify({ usedDocuments })}\n\n`);
+        }
+      }
+    }
+    
+    res.write(`event: end\ndata: {}\n\n`);
+    res.end();
   } catch (error: any) {
     console.error('Error during chat:', error);
-    res.status(500).json({ error: error.message || 'Internal server error during chat' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Internal server error during chat' });
+    } else {
+      res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.end();
+    }
   }
 });
 

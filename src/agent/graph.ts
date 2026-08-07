@@ -3,6 +3,7 @@ import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { z } from 'zod';
+import { Document } from '@langchain/core/documents';
 import { getVectorStore } from '../db/pgvector.js';
 import { config } from '../config.js';
 
@@ -11,7 +12,7 @@ export const GraphState = Annotation.Root({
   question: Annotation<string>({
     reducer: (x, y) => y ?? x,
   }),
-  documents: Annotation<any[]>({
+  documents: Annotation<Document[]>({
     reducer: (x, y) => y ?? x,
   }),
   answer: Annotation<string>({
@@ -23,6 +24,15 @@ const llm = new ChatGoogleGenerativeAI({
   apiKey: config.googleApiKey,
   model: 'gemini-3.5-flash',
   temperature: 0,
+});
+
+// A dedicated non-streaming LLM for grading to avoid consuming
+// the streaming quota (streamGenerateContent) on relevance checks.
+const gradingLlmBase = new ChatGoogleGenerativeAI({
+  apiKey: config.googleApiKey,
+  model: 'gemini-3.5-flash',
+  temperature: 0,
+  streaming: false,
 });
 
 // 2. Nodes
@@ -39,8 +49,9 @@ async function gradeDocuments(state: typeof GraphState.State) {
   console.log('---GRADE DOCUMENTS---');
   const { question, documents } = state;
   
-  // A simple LLM with structured output to grade relevance
-  const gradingLlm = llm.withStructuredOutput(
+  // Use the dedicated non-streaming LLM for grading to avoid wasting
+  // streaming quota on relevance checks.
+  const gradingLlm = gradingLlmBase.withStructuredOutput(
     z.object({
       binary_score: z.enum(['yes', 'no']).describe("Relevance score 'yes' or 'no'"),
     }),
@@ -57,7 +68,7 @@ async function gradeDocuments(state: typeof GraphState.State) {
 
   const chain = prompt.pipe(gradingLlm);
 
-  const filteredDocs: any[] = [];
+  const filteredDocs: Document[] = [];
   for (const doc of documents) {
     const res = await chain.invoke({
       document: doc.pageContent,
