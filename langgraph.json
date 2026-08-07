@@ -2,7 +2,8 @@
   "node_version": "20",
   "dependencies": ["."],
   "graphs": {
-    "rag_agent": "./src/agent/graph.ts:appGraph"
+    "rag_agent": "./src/agent/graph.ts:appGraph",
+    "ingestion_agent": "./src/agent/ingestionGraph.ts:ingestionGraph"
   },
   "env": ".env"
 }

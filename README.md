@@ -1,66 +1,73 @@
-# Self-Correcting RAG Backend MVP - Walkthrough
+# Self-Correcting RAG Backend MVP with Docling Ingestion
 
-I have successfully implemented the MVP for your Self-Correcting RAG Application using LangChain, LangGraph, Google Gemini, and Express.js in TypeScript!
+This repository contains a Self-Correcting RAG Application using LangChain, LangGraph, Google Gemini, and Express.js in TypeScript, along with a powerful document ingestion pipeline using Docling via a Python FastAPI microservice.
 
-Here is what was built:
+## Features
 
-1. **Express Server & API Routes** ([src/index.ts](file:///Users/muhammadiqbalfadholi/RAG/src/index.ts))
-   - `POST /api/upload`: Accepts a file (PDF or TXT) via `multipart/form-data`, chunks it, and ingests it into the vector database.
-   - `POST /api/chat`: Accepts a JSON body with a `question`, and runs the LangGraph agent to answer it.
+1. **Advanced Document Ingestion (Docling + LangGraph)** ([src/agent/ingestionGraph.ts](file:///Users/muhammadiqbalfadholi/RAG/src/agent/ingestionGraph.ts))
+   - A LangGraph workflow orchestrates document ingestion.
+   - Files are sent to a Python FastAPI microservice that runs **Docling** to extract rich Markdown from complex documents (e.g., PDFs).
+   - **Human-In-The-Loop (HITL)**: The ingestion pauses, allowing you to review and optionally edit the extracted Markdown before it is chunked and stored in PGVector.
 
-2. **Self-Correcting LangGraph Workflow** ([src/agent/graph.ts](file:///Users/muhammadiqbalfadholi/RAG/src/agent/graph.ts))
-   - The graph retrieves documents from `pgvector`.
-   - It then uses Gemini to **grade** the documents.
-   - If the documents are relevant, it **generates** an answer.
-   - If none of the documents are relevant, it **rewrites** the user's question and loops back to retrieval!
+2. **Self-Correcting RAG Workflow** ([src/agent/graph.ts](file:///Users/muhammadiqbalfadholi/RAG/src/agent/graph.ts))
+   - Retrieves documents from `pgvector`.
+   - Uses Gemini to **grade** the documents.
+   - If relevant, it **generates** an answer.
+   - If irrelevant, it **rewrites** the user's question and loops back to retrieval!
 
-3. **Ingestion & Vector DB** ([src/ingest.ts](file:///Users/muhammadiqbalfadholi/RAG/src/ingest.ts), [src/db/pgvector.ts](file:///Users/muhammadiqbalfadholi/RAG/src/db/pgvector.ts))
-   - Memory storage via `multer` allows us to process files directly.
-   - `pgvector` handles storing the embeddings using `text-embedding-004`.
+3. **Express Server API** ([src/index.ts](file:///Users/muhammadiqbalfadholi/RAG/src/index.ts))
+   - Exposes REST endpoints for chatting, uploading documents, and managing the HITL ingestion workflow.
 
-## Next Steps to Run the MVP
+## Running the Application
 
-Before you can run the server, you need to set up your environment variables and start the database.
+Everything is orchestrated using Docker Compose!
 
 > [!IMPORTANT]
 > **1. Set up Environment Variables**
-> Run the following command in your terminal to create your `.env` file:
->
-> ```bash
-> cp .env.example .env
-> ```
->
-> Then, open the `.env` file and fill in your `GOOGLE_API_KEY`. If you want to use LangSmith for tracing (highly recommended to visualize the graph), add your `LANGCHAIN_API_KEY` as well.
-
-> [!NOTE]
-> **2. Start PostgreSQL**
-> We've included a `docker-compose.yml` file. Run this command to start the database in the background:
->
-> ```bash
-> docker-compose up -d
-> ```
+> Environment variables for the Node API are now managed directly in `docker-compose.yml`. Ensure you have your `GOOGLE_API_KEY` set correctly in the `docker-compose.yml` file under the `node-api` service.
 
 > [!TIP]
-> **3. Start the Server**
-> Run the development server using:
+> **2. Start Services**
+> Run the following command to start PostgreSQL (pgvector), the Docling microservice, and the Express Node API all together:
 >
 > ```bash
-> npm run dev
+> docker-compose up --build -d
 > ```
 
-## Testing the API
+## API Usage
 
-Once the server is running, you can test it using `curl` or Postman.
+The Express API is available at `http://localhost:3000`.
 
-**1. Upload a Document**
+### 1. Ingestion Workflow (Docling + LangGraph)
 
+**Step 1: Start Ingestion**
+Upload a document (like a complex PDF):
 ```bash
-curl -X POST http://localhost:3000/api/upload \
-  -F "file=@/path/to/your/document.pdf"
+curl -X POST -F "file=@your_document.pdf" http://localhost:3000/ingest/start
+```
+*This returns a `thread_id`.*
+
+**Step 2: Check Status & Review Markdown**
+Use the `thread_id` to inspect the generated Markdown from Docling:
+```bash
+curl http://localhost:3000/ingest/status/<thread_id>
 ```
 
-**2. Ask a Question**
+**Step 3: (Optional) Edit Markdown**
+If the extracted Markdown needs adjustments before saving:
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"markdown": "# Edited Header\n\nContent..."}' http://localhost:3000/ingest/edit/<thread_id>
+```
 
+**Step 4: Approve Ingestion**
+Approve the document to trigger chunking and vector storage in PGVector:
+```bash
+curl -X POST http://localhost:3000/ingest/approve/<thread_id>
+```
+
+### 2. Chat (Self-Correcting RAG)
+
+Ask a question to trigger the self-correcting RAG LangGraph agent:
 ```bash
 curl -X POST http://localhost:3000/api/chat \
   -H "Content-Type: application/json" \

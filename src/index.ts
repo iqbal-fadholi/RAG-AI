@@ -4,7 +4,8 @@ import multer from 'multer';
 import { config } from './config.js';
 import { processFile } from './ingest.js';
 import { appGraph } from './agent/graph.js';
-
+import { ingestionGraph, checkpointer } from './agent/ingestionGraph.js';
+import { v4 as uuidv4 } from 'uuid';
 const app = express();
 const port = config.port;
 
@@ -14,6 +15,89 @@ app.use(express.json());
 // Configure multer for memory storage (for MVP)
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
+
+// --- New LangGraph Ingestion Routes ---
+app.post('/ingest/start', upload.single('file'), async (req, res): Promise<any> => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const thread_id = uuidv4();
+    const config = { configurable: { thread_id } };
+    
+    // Initialize the state
+    const { buffer, mimetype, originalname } = req.file;
+    await ingestionGraph.invoke(
+      { fileBuffer: buffer, fileName: originalname, mimeType: mimetype },
+      config
+    );
+
+    res.json({ message: 'Ingestion started, waiting for review', thread_id });
+  } catch (error: any) {
+    console.error('Error starting ingestion:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.get('/ingest/status/:thread_id', async (req, res): Promise<any> => {
+  try {
+    const thread_id = req.params.thread_id;
+    const config = { configurable: { thread_id } };
+    
+    const state = await ingestionGraph.getState(config);
+    if (!state || !state.values) {
+      return res.status(404).json({ error: 'Thread not found or no state available' });
+    }
+
+    res.json({
+      status: state.values.reviewStatus,
+      fileName: state.values.fileName,
+      extractedMarkdown: state.values.extractedMarkdown,
+      next: state.next
+    });
+  } catch (error: any) {
+    console.error('Error getting status:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.post('/ingest/edit/:thread_id', async (req, res): Promise<any> => {
+  try {
+    const thread_id = req.params.thread_id;
+    const { markdown } = req.body;
+    
+    if (!markdown) {
+      return res.status(400).json({ error: 'Markdown content is required' });
+    }
+
+    const config = { configurable: { thread_id } };
+    // Update the state with the edited markdown
+    await ingestionGraph.updateState(config, { extractedMarkdown: markdown });
+
+    res.json({ message: 'Markdown updated successfully' });
+  } catch (error: any) {
+    console.error('Error editing markdown:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.post('/ingest/approve/:thread_id', async (req, res): Promise<any> => {
+  try {
+    const thread_id = req.params.thread_id;
+    const config = { configurable: { thread_id } };
+    
+    // Update the state to approved
+    await ingestionGraph.updateState(config, { reviewStatus: 'approved' }, 'humanReviewNode');
+    
+    // Resume the graph
+    await ingestionGraph.invoke(null, config);
+
+    res.json({ message: 'Document approved and processed' });
+  } catch (error: any) {
+    console.error('Error approving document:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+// ----------------------------------------
 
 app.post('/api/upload', upload.single('file'), async (req, res): Promise<any> => {
   try {

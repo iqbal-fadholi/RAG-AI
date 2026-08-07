@@ -5,3 +5,11 @@ When working with `@langchain/google-genai` or the Google Generative AI SDK for 
 - Different API keys have access to different model aliases (e.g., `gemini-embedding-2`, `gemini-embedding-001`).
 - **Immediately** run a script to query `https://generativelanguage.googleapis.com/v1beta/models?key=${GOOGLE_API_KEY}` and filter for `supportedGenerationMethods.includes('embedContent')` to find the exact model names provisioned for that key.
 - Update the code to use the newest model returned by that query (e.g., `gemini-embedding-2`).
+
+# Docker Compose Guidelines
+
+When working with Docker Compose in this project:
+
+1. **Service Networking**: Never use `localhost` for communication between containers. Always use the exact service name defined in `docker-compose.yml` (e.g., `pgvector`, `docling-service`) as the hostname.
+2. **Default Networks**: Do not explicitly define custom networks in `docker-compose.yml` unless strictly required for complex isolation. Rely on Docker Compose's default network.
+3. **Environment Variables**: Prefer defining application environment variables directly in the `docker-compose.yml` file under the service's `environment:` block rather than relying solely on local `.env` files, ensuring values like `DB_HOST` correctly point to docker service names.
