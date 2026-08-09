@@ -2,7 +2,7 @@ import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import pg from 'pg';
 import { config } from '../config/index.js';
 
-const pool = new pg.Pool({
+export const pool = new pg.Pool({
   host: config.db.host,
   port: config.db.port,
   user: config.db.user,
@@ -10,8 +10,11 @@ const pool = new pg.Pool({
   database: config.db.database,
 });
 
+import { setupDocumentsTable } from './documents.js';
+
 export const getPostgresSaver = async () => {
   const checkpointer = new PostgresSaver(pool);
   await checkpointer.setup(); // Creates the necessary tables if they don't exist
+  await setupDocumentsTable(); // Creates our custom uploaded_files table
   return checkpointer;
 };

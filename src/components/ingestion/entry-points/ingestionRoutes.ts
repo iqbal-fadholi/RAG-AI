@@ -11,6 +11,7 @@ import {
   editStatusSchema,
   approveStatusSchema,
 } from '../domain/ingestionSchema.js';
+import { listDocuments, deleteDocument } from '../../../libraries/db/documents.js';
 
 const router = Router();
 
@@ -82,6 +83,23 @@ router.post(
     await ingestionGraph.invoke(null, graphConfig);
 
     res.json({ message: 'Document approved and processed' });
+  })
+);
+
+router.get(
+  '/files',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const files = await listDocuments();
+    res.json(files);
+  })
+);
+
+router.delete(
+  '/files/:id',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const id = req.params.id as string;
+    await deleteDocument(id);
+    res.json({ message: 'Document and its vector chunks deleted successfully' });
   })
 );
 

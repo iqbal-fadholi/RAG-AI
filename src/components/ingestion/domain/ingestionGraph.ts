@@ -1,8 +1,10 @@
 import { StateGraph, Annotation } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+import { v4 as uuidv4 } from "uuid";
 import { VectorStoreRepository } from "../data-access/vectorStoreRepository.js";
 import { config } from "../../../libraries/config/index.js";
+import { pool } from "../../../libraries/db/checkpoint.js";
 
 export const IngestionStateAnnotation = Annotation.Root({
   fileBuffer: Annotation<Buffer>(),
@@ -54,6 +56,15 @@ async function processAndSaveNode(state: IngestionState): Promise<Partial<Ingest
   }
 
   console.log("Document approved. Splitting and saving to pgvector...");
+  
+  const file_id = uuidv4();
+  
+  // Save to uploaded_files table
+  await pool.query(
+    'INSERT INTO uploaded_files (id, filename) VALUES ($1, $2)',
+    [file_id, state.fileName]
+  );
+
   const textSplitter = new RecursiveCharacterTextSplitter({
     chunkSize: 1000,
     chunkOverlap: 200,
@@ -61,14 +72,14 @@ async function processAndSaveNode(state: IngestionState): Promise<Partial<Ingest
 
   const docs = [{ 
     pageContent: state.extractedMarkdown, 
-    metadata: { source: state.fileName } 
+    metadata: { source: state.fileName, file_id } 
   }];
 
   const splits = await textSplitter.splitDocuments(docs);
 
   await vectorStoreRepo.addDocuments(splits);
 
-  console.log(`Saved ${splits.length} chunks to vector store.`);
+  console.log(`Saved ${splits.length} chunks to vector store for file ${file_id}.`);
   return {};
 }
 
