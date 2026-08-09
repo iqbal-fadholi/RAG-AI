@@ -15,18 +15,8 @@ services:
     build: .
     ports:
       - "3000:3000"
-    environment:
-      - PORT=3000
-      - GOOGLE_API_KEY=AQ.Ab8RN6J3Mx4k2WuVK3zuWJENhVklae_BF53yJMoKDSr4q4Q2_g
-      - DB_HOST=pgvector
-      - DB_PORT=5432
-      - DB_USER=raguser
-      - DB_PASSWORD=ragpassword
-      - DB_NAME=rag_db
-      - LANGCHAIN_TRACING_V2=true
-      - LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
-      - LANGCHAIN_API_KEY=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
-      - LANGCHAIN_PROJECT=rag-mvp
+    env_file:
+      - .env
     depends_on:
       - pgvector
       - docling-service

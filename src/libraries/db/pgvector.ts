@@ -1,7 +1,7 @@
 import { PGVectorStore } from '@langchain/community/vectorstores/pgvector';
 import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 import type { PoolConfig } from 'pg';
-import { config } from '../config.js';
+import { config } from '../config/index.js';
 
 const dbConfig: PoolConfig = {
   host: config.db.host,
@@ -23,7 +23,6 @@ export const getVectorStore = async (): Promise<PGVectorStore> => {
     modelName: 'gemini-embedding-2',
   });
 
-  // PGVectorStore handles connection, creating the table and extension
   vectorStore = await PGVectorStore.initialize(embeddings, {
     postgresConnectionOptions: dbConfig,
     tableName: 'documents',
@@ -33,7 +32,6 @@ export const getVectorStore = async (): Promise<PGVectorStore> => {
       contentColumnName: 'page_content',
       metadataColumnName: 'metadata',
     },
-    // The dimension of gemini-embedding-2 is 3072
     dimensions: 3072,
   });
 

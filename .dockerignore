@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.git/
+.env
+*.md
+http/
+.agents/
+Dockerfile
+docker-compose.yml
+podman-compose.yml

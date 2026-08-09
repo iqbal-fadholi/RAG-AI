@@ -2,9 +2,11 @@
   "name": "rag",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
     "studio": "npx @langchain/langgraph-cli dev"
   },
   "keywords": [],
@@ -12,6 +14,10 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@langchain/community": "^1.1.29",
+    "@langchain/core": "^1.2.4",
+    "@langchain/google-genai": "^2.2.0",
+    "@langchain/langgraph": "^1.4.9",
     "@langchain/textsplitters": "^1.0.1",
     "cors": "^2.8.6",
     "dotenv": "16.4.5",
@@ -23,10 +29,6 @@
     "uuid": "^14.0.1"
   },
   "devDependencies": {
-    "@langchain/community": "^1.1.29",
-    "@langchain/core": "^1.2.4",
-    "@langchain/google-genai": "^2.2.0",
-    "@langchain/langgraph": "^1.4.9",
     "@langchain/langgraph-cli": "^1.1.17",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

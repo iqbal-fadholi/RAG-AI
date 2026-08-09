@@ -4,8 +4,8 @@ import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { z } from 'zod';
 import { Document } from '@langchain/core/documents';
-import { getVectorStore } from '../db/pgvector.js';
-import { config } from '../config.js';
+import { getVectorStore } from '../../../libraries/db/pgvector.js';
+import { config } from '../../../libraries/config/index.js';
 
 // 1. Define the State
 export const GraphState = Annotation.Root({
@@ -49,8 +49,6 @@ async function gradeDocuments(state: typeof GraphState.State) {
   console.log('---GRADE DOCUMENTS---');
   const { question, documents } = state;
   
-  // Use the dedicated non-streaming LLM for grading to avoid wasting
-  // streaming quota on relevance checks.
   const gradingLlm = gradingLlmBase.withStructuredOutput(
     z.object({
       binary_score: z.enum(['yes', 'no']).describe("Relevance score 'yes' or 'no'"),

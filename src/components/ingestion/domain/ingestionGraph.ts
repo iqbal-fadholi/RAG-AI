@@ -1,7 +1,8 @@
 import { StateGraph, Annotation } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { getVectorStore } from "../db/pgvector.js";
+import { VectorStoreRepository } from "../data-access/vectorStoreRepository.js";
+import { config } from "../../../libraries/config/index.js";
 
 export const IngestionStateAnnotation = Annotation.Root({
   fileBuffer: Annotation<Buffer>(),
@@ -13,8 +14,9 @@ export const IngestionStateAnnotation = Annotation.Root({
 
 type IngestionState = typeof IngestionStateAnnotation.State;
 
+const vectorStoreRepo = new VectorStoreRepository();
+
 async function parseDocumentNode(state: IngestionState): Promise<Partial<IngestionState>> {
-  // Send the file to the Docling FastAPI service
   const { fileBuffer, fileName, mimeType } = state;
 
   const blob = new Blob([new Uint8Array(fileBuffer)], { type: mimeType });
@@ -22,7 +24,7 @@ async function parseDocumentNode(state: IngestionState): Promise<Partial<Ingesti
   formData.append("file", blob, fileName);
 
   console.log(`Sending ${fileName} to Docling service...`);
-  const response = await fetch("http://docling-service:8000/parse", {
+  const response = await fetch(`${config.doclingServiceUrl}/parse`, {
     method: "POST",
     body: formData,
   });
@@ -41,8 +43,7 @@ async function parseDocumentNode(state: IngestionState): Promise<Partial<Ingesti
 
 async function humanReviewNode(state: IngestionState): Promise<Partial<IngestionState>> {
   // This node just serves as a breakpoint.
-  // The actual update (e.g. reviewStatus = "approved" and edited extractedMarkdown)
-  // will be done via external API call updating the graph state.
+  // The actual update will be done via external API call updating the graph state.
   return {};
 }
 
@@ -58,7 +59,6 @@ async function processAndSaveNode(state: IngestionState): Promise<Partial<Ingest
     chunkOverlap: 200,
   });
 
-  // Create documents from the reviewed markdown
   const docs = [{ 
     pageContent: state.extractedMarkdown, 
     metadata: { source: state.fileName } 
@@ -66,8 +66,7 @@ async function processAndSaveNode(state: IngestionState): Promise<Partial<Ingest
 
   const splits = await textSplitter.splitDocuments(docs);
 
-  const vectorStore = await getVectorStore();
-  await vectorStore.addDocuments(splits);
+  await vectorStoreRepo.addDocuments(splits);
 
   console.log(`Saved ${splits.length} chunks to vector store.`);
   return {};

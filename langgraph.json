@@ -2,8 +2,8 @@
   "node_version": "20",
   "dependencies": ["."],
   "graphs": {
-    "rag_agent": "./src/agent/graph.ts:appGraph",
-    "ingestion_agent": "./src/agent/ingestionGraph.ts:ingestionGraph"
+    "rag_agent": "./src/components/chat/domain/chatGraph.ts:appGraph",
+    "ingestion_agent": "./src/components/ingestion/domain/ingestionGraph.ts:ingestionGraph"
   },
   "env": ".env"
 }
