@@ -1,6 +1,6 @@
 import { StateGraph, Annotation } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+import { MarkdownTextSplitter } from "@langchain/textsplitters";
 import { v4 as uuidv4 } from "uuid";
 import { VectorStoreRepository } from "../data-access/vectorStoreRepository.js";
 import { config } from "../../../libraries/config/index.js";
@@ -65,8 +65,10 @@ async function processAndSaveNode(state: IngestionState): Promise<Partial<Ingest
     [file_id, state.fileName]
   );
 
-  const textSplitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 1000,
+  // Semantic Chunking: Split by Markdown structure (Headers, Paragraphs, Lists) first,
+  // falling back to character limits only if a semantic block is too large.
+  const textSplitter = new MarkdownTextSplitter({
+    chunkSize: 1500,
     chunkOverlap: 200,
   });
 
