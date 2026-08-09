@@ -8,6 +8,7 @@ import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/
 import { getVectorStore } from '../../../libraries/db/pgvector.js';
 import { config } from '../../../libraries/config/index.js';
 import { getPostgresSaver } from '../../../libraries/db/checkpoint.js';
+import { keywordSearch } from '../../../libraries/db/documents.js';
 
 // 1. Define the State
 export const GraphState = Annotation.Root({
@@ -75,11 +76,56 @@ async function condenseQuestion(state: typeof GraphState.State) {
 }
 
 async function retrieve(state: typeof GraphState.State) {
-  console.log('---RETRIEVE---');
+  console.log('---HYBRID RETRIEVE---');
+  
+  // Execute both searches concurrently
   const vectorStore = await getVectorStore();
   const retriever = vectorStore.asRetriever({ k: 10 });
-  const docs = await retriever.invoke(state.question);
-  return { documents: docs };
+  
+  const [semanticDocs, keywordDocs] = await Promise.all([
+    retriever.invoke(state.question),
+    keywordSearch(state.question, 10)
+  ]);
+
+  // Map to a common format and track rankings for Reciprocal Rank Fusion
+  const docMap = new Map<string, { doc: Document, semanticRank: number, keywordRank: number }>();
+  
+  // Process semantic results
+  semanticDocs.forEach((doc, index) => {
+    // Use pageContent as unique key for deduplication
+    const key = doc.pageContent;
+    docMap.set(key, { doc, semanticRank: index + 1, keywordRank: 1000 });
+  });
+
+  // Process keyword results
+  keywordDocs.forEach((kDoc, index) => {
+    const key = kDoc.page_content;
+    if (docMap.has(key)) {
+      docMap.get(key)!.keywordRank = index + 1;
+    } else {
+      const doc = new Document({
+        pageContent: kDoc.page_content,
+        metadata: kDoc.metadata
+      });
+      docMap.set(key, { doc, semanticRank: 1000, keywordRank: index + 1 });
+    }
+  });
+
+  // Calculate RRF Score for each document
+  const K = 60; // Standard RRF constant
+  const fusedDocs = Array.from(docMap.values()).map(item => {
+    const rrfScore = (1 / (K + item.semanticRank)) + (1 / (K + item.keywordRank));
+    return { doc: item.doc, rrfScore };
+  });
+
+  // Sort by RRF score descending and keep top 10 overall
+  const finalDocs = fusedDocs
+    .sort((a, b) => b.rrfScore - a.rrfScore)
+    .slice(0, 10)
+    .map(item => item.doc);
+
+  console.log(`Found ${semanticDocs.length} semantic docs and ${keywordDocs.length} keyword docs. Fused to ${finalDocs.length} unique docs.`);
+  return { documents: finalDocs };
 }
 
 async function rerankDocuments(state: typeof GraphState.State) {

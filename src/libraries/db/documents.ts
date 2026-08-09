@@ -37,3 +37,22 @@ export const deleteDocument = async (id: string) => {
     client.release();
   }
 };
+
+export interface KeywordSearchResult {
+  id: string;
+  page_content: string;
+  metadata: any;
+}
+
+export const keywordSearch = async (query: string, limit: number = 10): Promise<KeywordSearchResult[]> => {
+  const sql = `
+    SELECT id, page_content, metadata, 
+           ts_rank(to_tsvector('english', page_content), plainto_tsquery('english', $1)) as rank
+    FROM documents
+    WHERE to_tsvector('english', page_content) @@ plainto_tsquery('english', $1)
+    ORDER BY rank DESC
+    LIMIT $2;
+  `;
+  const result = await pool.query(sql, [query, limit]);
+  return result.rows;
+};
