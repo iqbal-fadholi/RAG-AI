@@ -208,16 +208,28 @@ async function generate(state: typeof GraphState.State) {
     You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. 
     If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
     
+    CRITICAL INSTRUCTION FOR CITATIONS:
+    You MUST explicitly cite your sources in your answer. Each piece of retrieved context below is preceded by a header like "--- Document [1] (Source: filename) ---".
+    Whenever you use information from a document, you MUST append a citation like [1] or [2] directly after the sentence.
+
     Chat History:
     {chat_history}
 
     Question: {question} 
-    Context: {context} 
+    Context: 
+    {context} 
+    
     Answer:
   `);
 
   const chatHistoryStr = messages.map(m => `${m._getType() === 'human' ? 'User' : 'AI'}: ${m.content}`).join('\n');
-  const docsContent = documents.map((doc) => doc.pageContent).join('\n\n');
+  
+  // Format context with explicit Document IDs and Sources
+  const docsContent = documents.map((doc, index) => {
+    const sourceName = doc.metadata?.source || 'Unknown Source';
+    return `--- Document [${index + 1}] (Source: ${sourceName}) ---\n${doc.pageContent}`;
+  }).join('\n\n');
+  
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
   
   const stream = await chain.stream({
