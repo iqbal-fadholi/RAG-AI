@@ -18,6 +18,9 @@ export const GraphState = Annotation.Root({
   answer: Annotation<string>({
     reducer: (x, y) => y ?? x,
   }),
+  rewriteCount: Annotation<number>({
+    reducer: (x, y) => y ?? x,
+  }),
 });
 
 const llm = new ChatGoogleGenerativeAI({
@@ -84,6 +87,10 @@ async function generate(state: typeof GraphState.State) {
   console.log('---GENERATE---');
   const { question, documents } = state;
   
+  if (!documents || documents.length === 0) {
+    return { answer: 'I could not find relevant information in the uploaded documents to answer your question.' };
+  }
+  
   const prompt = PromptTemplate.fromTemplate(`
     You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. 
     If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
@@ -95,17 +102,23 @@ async function generate(state: typeof GraphState.State) {
   const docsContent = documents.map((doc) => doc.pageContent).join('\n\n');
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
   
-  const answer = await chain.invoke({
+  const stream = await chain.stream({
     question: question,
     context: docsContent,
   });
+
+  let answer = '';
+  for await (const chunk of stream) {
+    answer += chunk;
+  }
 
   return { answer };
 }
 
 async function rewrite(state: typeof GraphState.State) {
   console.log('---REWRITE QUESTION---');
-  const { question } = state;
+  const { question, rewriteCount } = state;
+  const currentCount = rewriteCount ?? 0;
   
   const prompt = PromptTemplate.fromTemplate(`
     You are a question re-writer that converts an input question to a better version that is optimized 
@@ -120,17 +133,22 @@ async function rewrite(state: typeof GraphState.State) {
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
   
   const betterQuestion = await chain.invoke({ question });
-  return { question: betterQuestion };
+  return { question: betterQuestion, rewriteCount: currentCount + 1 };
 }
 
 // 3. Edges
 
 function decideToGenerate(state: typeof GraphState.State) {
   console.log('---DECIDE TO GENERATE---');
-  const { documents } = state;
+  const { documents, rewriteCount } = state;
+  const count = rewriteCount ?? 0;
   
   if (!documents || documents.length === 0) {
-    console.log('---DECISION: ALL DOCUMENTS ARE NOT RELEVANT, REWRITE---');
+    if (count >= 3) {
+      console.log('---DECISION: ALL DOCUMENTS ARE NOT RELEVANT, MAX REWRITES REACHED. GENERATE---');
+      return 'generate';
+    }
+    console.log(`---DECISION: ALL DOCUMENTS ARE NOT RELEVANT, REWRITE (attempt ${count + 1}/3)---`);
     return 'rewrite';
   }
   

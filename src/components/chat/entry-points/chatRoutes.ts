@@ -22,34 +22,50 @@ router.post(
     res.flushHeaders();
 
     console.log(`Starting LangGraph for question: "${question}"`);
-    const initialState = { question, documents: [], answer: '' };
+    const initialState = { question, documents: [], answer: '', rewriteCount: 0 };
+    let tokensStreamed = false;
     
-    // Stream events
-    const stream = await appGraph.streamEvents(initialState, { version: 'v2' });
-    
-    for await (const event of stream) {
-      if (event.event === 'on_chain_start') {
-        // Filter for specific node starts
-        if (['retrieve', 'gradeDocuments', 'generate', 'rewrite'].includes(event.name)) {
-          res.write(`event: progress\ndata: ${JSON.stringify({ step: event.name })}\n\n`);
-        }
-      } else if (event.event === 'on_chat_model_stream') {
-        const chunk = event.data?.chunk;
-        if (chunk && chunk.content) {
-          res.write(`event: token\ndata: ${JSON.stringify({ token: chunk.content })}\n\n`);
-        }
-      } else if (event.event === 'on_chain_end' && event.name === 'LangGraph') {
-        // Send metadata at the end of the entire graph
-        const finalState = event.data?.output;
-        if (finalState && finalState.documents) {
-          const usedDocuments = finalState.documents.map((d: any) => d.metadata);
-          res.write(`event: metadata\ndata: ${JSON.stringify({ usedDocuments })}\n\n`);
+    try {
+      // Stream events
+      const stream = await appGraph.streamEvents(initialState, { version: 'v2' });
+      
+      for await (const event of stream) {
+        if (event.event === 'on_chain_start') {
+          // Filter for specific node starts
+          if (['retrieve', 'gradeDocuments', 'generate', 'rewrite'].includes(event.name)) {
+            res.write(`event: progress\ndata: ${JSON.stringify({ step: event.name })}\n\n`);
+          }
+        } else if (event.event === 'on_chat_model_stream') {
+          const chunk = event.data?.chunk;
+          if (chunk && chunk.content) {
+            tokensStreamed = true;
+            res.write(`event: token\ndata: ${JSON.stringify({ token: chunk.content })}\n\n`);
+          }
+        } else if (event.event === 'on_chain_end') {
+          if (event.name === 'generate') {
+            const output = event.data?.output;
+            if (output && output.answer && !tokensStreamed) {
+              // Send the fallback answer as a token since the LLM was skipped
+              res.write(`event: token\ndata: ${JSON.stringify({ token: output.answer })}\n\n`);
+            }
+          } else if (event.name === 'LangGraph') {
+            // Send metadata at the end of the entire graph
+            const finalState = event.data?.output;
+            if (finalState && finalState.documents) {
+              const usedDocuments = finalState.documents.map((d: any) => d.metadata);
+              res.write(`event: metadata\ndata: ${JSON.stringify({ usedDocuments })}\n\n`);
+            }
+          }
         }
       }
+      
+      res.write(`event: end\ndata: {}\n\n`);
+      res.end();
+    } catch (error: any) {
+      console.error('[ChatSSEError] Error during streaming events:', error);
+      res.write(`event: error\ndata: ${JSON.stringify({ message: error.message || 'Internal streaming error' })}\n\n`);
+      res.end();
     }
-    
-    res.write(`event: end\ndata: {}\n\n`);
-    res.end();
   })
 );
 
