@@ -2,7 +2,9 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { asyncWrapper } from '../../../libraries/error-handling/asyncWrapper.js';
 import { chatRequestSchema } from '../domain/chatSchema.js';
-import { appGraph } from '../domain/chatGraph.js';
+import { getAppGraph } from '../domain/chatGraph.js';
+
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
@@ -11,7 +13,8 @@ router.post(
   asyncWrapper(async (req: Request, res: Response): Promise<void> => {
     // Validate request body
     const validatedBody = chatRequestSchema.parse(req.body);
-    const { question } = validatedBody;
+    const { question, thread_id: providedThreadId } = validatedBody;
+    const thread_id = providedThreadId || uuidv4();
 
     // Set headers for SSE
     res.setHeader('Content-Type', 'text/event-stream');
@@ -21,13 +24,22 @@ router.post(
     // Flush the headers immediately
     res.flushHeaders();
 
-    console.log(`Starting LangGraph for question: "${question}"`);
+    // Immediately send the thread_id so the client knows it
+    res.write(`event: thread\ndata: ${JSON.stringify({ thread_id })}\n\n`);
+
+    console.log(`Starting LangGraph for question: "${question}" in thread: ${thread_id}`);
     const initialState = { question, documents: [], answer: '', rewriteCount: 0 };
     let tokensStreamed = false;
     
     try {
-      // Stream events
-      const stream = await appGraph.streamEvents(initialState, { version: 'v2' });
+      // Initialize graph with memory
+      const appGraph = await getAppGraph();
+
+      // Stream events, passing the thread_id to the checkpointer
+      const stream = await appGraph.streamEvents(initialState, { 
+        version: 'v2',
+        configurable: { thread_id }
+      });
       
       for await (const event of stream) {
         if (event.event === 'on_chain_start') {
