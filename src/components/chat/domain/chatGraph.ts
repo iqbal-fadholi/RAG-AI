@@ -15,6 +15,9 @@ export const GraphState = Annotation.Root({
   question: Annotation<string>({
     reducer: (x, y) => y ?? x,
   }),
+  searchQueries: Annotation<string[]>({
+    reducer: (x, y) => y ?? x,
+  }),
   documents: Annotation<Document[]>({
     reducer: (x, y) => y ?? x,
   }),
@@ -45,86 +48,100 @@ const gradingLlmBase = new ChatGoogleGenerativeAI({
 
 // 2. Nodes
 
-async function condenseQuestion(state: typeof GraphState.State) {
-  console.log('---CONDENSE QUESTION---');
+async function generateQueries(state: typeof GraphState.State) {
+  console.log('---GENERATE MULTI-QUERIES---');
   const { question, messages } = state;
   
-  // If there is no chat history, we don't need to condense
+  const queryGenLlm = gradingLlmBase.withStructuredOutput(
+    z.object({
+      queries: z.array(z.string()).min(1).max(3).describe("A list of 3 semantic variations of the search query"),
+    }),
+    { name: 'generate_queries' }
+  );
+
+  let prompt: any;
+  let chainOptions: any;
+
   if (messages.length === 0) {
-    return { question };
+    prompt = PromptTemplate.fromTemplate(`
+      You are an AI assistant tasked with generating search queries to retrieve relevant documents from a vector database.
+      Given the following user question, generate 3 distinct semantic variations of the question to maximize recall.
+      Focus on different keywords, synonyms, and phrasing.
+      
+      User Question: {question}
+    `);
+    chainOptions = { question: question };
+  } else {
+    prompt = PromptTemplate.fromTemplate(`
+      You are an AI assistant tasked with generating search queries to retrieve relevant documents from a vector database.
+      Given the following chat history and a follow-up question, first understand the underlying intent, then generate 3 distinct semantic variations of the standalone question to maximize recall.
+      
+      Chat History:
+      {chat_history}
+      
+      Follow Up Input: {question}
+    `);
+    const chatHistoryStr = messages.map(m => `${m._getType() === 'human' ? 'User' : 'AI'}: ${m.content}`).join('\n');
+    chainOptions = { chat_history: chatHistoryStr, question: question };
   }
 
-  const prompt = PromptTemplate.fromTemplate(`
-    Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.
-    
-    Chat History:
-    {chat_history}
-    
-    Follow Up Input: {question}
-    Standalone question:
-  `);
-
-  const chatHistoryStr = messages.map(m => `${m._getType() === 'human' ? 'User' : 'AI'}: ${m.content}`).join('\n');
-  const chain = prompt.pipe(llm).pipe(new StringOutputParser());
+  const chain = prompt.pipe(queryGenLlm);
   
-  const standaloneQuestion = await chain.invoke({
-    chat_history: chatHistoryStr,
-    question: question,
-  });
-
-  return { question: standaloneQuestion };
+  try {
+    const res = await chain.invoke(chainOptions);
+    console.log(`Generated queries: ${res.queries.join(', ')}`);
+    return { searchQueries: res.queries };
+  } catch (error) {
+    console.error('Failed to generate queries, falling back to original question');
+    return { searchQueries: [question] };
+  }
 }
 
 async function retrieve(state: typeof GraphState.State) {
-  console.log('---HYBRID RETRIEVE---');
+  console.log('---HYBRID MULTI-QUERY RETRIEVE---');
   
-  // Execute both searches concurrently
   const vectorStore = await getVectorStore();
   const retriever = vectorStore.asRetriever({ k: 10 });
   
-  const [semanticDocs, keywordDocs] = await Promise.all([
-    retriever.invoke(state.question),
-    keywordSearch(state.question, 10)
-  ]);
+  // Use generated queries or fallback to original question
+  const queries = state.searchQueries && state.searchQueries.length > 0 
+    ? state.searchQueries 
+    : [state.question];
+
+  // Execute both searches concurrently for ALL queries
+  const promises = queries.map(q => Promise.all([
+    retriever.invoke(q),
+    keywordSearch(q, 10)
+  ]));
+
+  const results = await Promise.all(promises);
 
   // Map to a common format and track rankings for Reciprocal Rank Fusion
-  const docMap = new Map<string, { doc: Document, semanticRank: number, keywordRank: number }>();
-  
-  // Process semantic results
-  semanticDocs.forEach((doc, index) => {
-    // Use pageContent as unique key for deduplication
-    const key = doc.pageContent;
-    docMap.set(key, { doc, semanticRank: index + 1, keywordRank: 1000 });
-  });
-
-  // Process keyword results
-  keywordDocs.forEach((kDoc, index) => {
-    const key = kDoc.page_content;
-    if (docMap.has(key)) {
-      docMap.get(key)!.keywordRank = index + 1;
-    } else {
-      const doc = new Document({
-        pageContent: kDoc.page_content,
-        metadata: kDoc.metadata
-      });
-      docMap.set(key, { doc, semanticRank: 1000, keywordRank: index + 1 });
-    }
-  });
-
-  // Calculate RRF Score for each document
+  const docMap = new Map<string, { doc: Document, rrfScore: number }>();
   const K = 60; // Standard RRF constant
-  const fusedDocs = Array.from(docMap.values()).map(item => {
-    const rrfScore = (1 / (K + item.semanticRank)) + (1 / (K + item.keywordRank));
-    return { doc: item.doc, rrfScore };
+
+  const addScore = (docOrKDoc: any, rank: number, isKeyword: boolean) => {
+    const key = isKeyword ? docOrKDoc.page_content : docOrKDoc.pageContent;
+    const current = docMap.get(key) || { 
+      doc: isKeyword ? new Document({ pageContent: key, metadata: docOrKDoc.metadata }) : docOrKDoc, 
+      rrfScore: 0 
+    };
+    current.rrfScore += 1 / (K + rank);
+    docMap.set(key, current);
+  };
+  
+  results.forEach(([semanticDocs, keywordDocs]) => {
+    semanticDocs.forEach((doc, index) => addScore(doc, index + 1, false));
+    keywordDocs.forEach((kDoc, index) => addScore(kDoc, index + 1, true));
   });
 
   // Sort by RRF score descending and keep top 10 overall
-  const finalDocs = fusedDocs
+  const finalDocs = Array.from(docMap.values())
     .sort((a, b) => b.rrfScore - a.rrfScore)
     .slice(0, 10)
     .map(item => item.doc);
 
-  console.log(`Found ${semanticDocs.length} semantic docs and ${keywordDocs.length} keyword docs. Fused to ${finalDocs.length} unique docs.`);
+  console.log(`Fused ${docMap.size} unique docs down to top ${finalDocs.length} using RRF.`);
   return { documents: finalDocs };
 }
 
@@ -308,15 +325,15 @@ export const getAppGraph = async () => {
   const checkpointer = await getPostgresSaver();
 
   const workflow = new StateGraph(GraphState)
-    .addNode('condenseQuestion', condenseQuestion)
+    .addNode('generateQueries', generateQueries)
     .addNode('retrieve', retrieve)
     .addNode('rerankDocuments', rerankDocuments)
     .addNode('generate', generate)
     .addNode('rewrite', rewrite)
     .addNode('summarizeHistory', summarizeHistory)
     
-    .addEdge(START, 'condenseQuestion')
-    .addEdge('condenseQuestion', 'retrieve')
+    .addEdge(START, 'generateQueries')
+    .addEdge('generateQueries', 'retrieve')
     .addEdge('retrieve', 'rerankDocuments')
     .addConditionalEdges('rerankDocuments', decideToGenerate, {
       rewrite: 'rewrite',
