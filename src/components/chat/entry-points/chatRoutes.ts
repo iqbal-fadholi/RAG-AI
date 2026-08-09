@@ -44,7 +44,7 @@ router.post(
       for await (const event of stream) {
         if (event.event === 'on_chain_start') {
           // Filter for specific node starts
-          if (['retrieve', 'gradeDocuments', 'generate', 'rewrite'].includes(event.name)) {
+          if (['retrieve', 'rerankDocuments', 'generate', 'rewrite'].includes(event.name)) {
             res.write(`event: progress\ndata: ${JSON.stringify({ step: event.name })}\n\n`);
           }
         } else if (event.event === 'on_chat_model_stream') {

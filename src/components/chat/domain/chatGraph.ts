@@ -77,44 +77,56 @@ async function condenseQuestion(state: typeof GraphState.State) {
 async function retrieve(state: typeof GraphState.State) {
   console.log('---RETRIEVE---');
   const vectorStore = await getVectorStore();
-  const retriever = vectorStore.asRetriever({ k: 4 });
+  const retriever = vectorStore.asRetriever({ k: 10 });
   const docs = await retriever.invoke(state.question);
   return { documents: docs };
 }
 
-async function gradeDocuments(state: typeof GraphState.State) {
-  console.log('---GRADE DOCUMENTS---');
+async function rerankDocuments(state: typeof GraphState.State) {
+  console.log('---RERANK DOCUMENTS---');
   const { question, documents } = state;
   
-  const gradingLlm = gradingLlmBase.withStructuredOutput(
+  const rerankingLlm = gradingLlmBase.withStructuredOutput(
     z.object({
-      binary_score: z.enum(['yes', 'no']).describe("Relevance score 'yes' or 'no'"),
+      score: z.number().int().min(1).max(10).describe("Relevance score from 1 to 10"),
     }),
-    { name: 'grade_relevance' }
+    { name: 'score_relevance' }
   );
 
   const prompt = PromptTemplate.fromTemplate(`
-    You are a grader assessing relevance of a retrieved document to a user question.
+    You are an expert evaluator assessing the relevance of a retrieved document to a user question.
     Here is the retrieved document: \n\n {document} \n\n
     Here is the user question: {question}
-    If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant.
-    Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
+    Assign a relevance score from 1 to 10. 
+    1 means completely irrelevant, 10 means highly relevant and directly answers the question.
   `);
 
-  const chain = prompt.pipe(gradingLlm);
+  const chain = prompt.pipe(rerankingLlm);
 
-  const filteredDocs: Document[] = [];
-  for (const doc of documents) {
-    const res = await chain.invoke({
-      document: doc.pageContent,
-      question: question,
-    });
-    if (res.binary_score === 'yes') {
-      filteredDocs.push(doc);
-    }
-  }
+  // Run the LLM on all 10 documents concurrently
+  const scoredDocs = await Promise.all(
+    documents.map(async (doc) => {
+      try {
+        const res = await chain.invoke({
+          document: doc.pageContent,
+          question: question,
+        });
+        return { doc, score: res.score };
+      } catch (error) {
+        // Fallback score if LLM fails
+        return { doc, score: 1 };
+      }
+    })
+  );
 
-  return { documents: filteredDocs };
+  // Sort descending and keep the top 4 documents that have a score >= 4
+  const topDocs = scoredDocs
+    .filter(item => item.score >= 4)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+    .map(item => item.doc);
+
+  return { documents: topDocs };
 }
 
 async function generate(state: typeof GraphState.State) {
@@ -252,15 +264,15 @@ export const getAppGraph = async () => {
   const workflow = new StateGraph(GraphState)
     .addNode('condenseQuestion', condenseQuestion)
     .addNode('retrieve', retrieve)
-    .addNode('gradeDocuments', gradeDocuments)
+    .addNode('rerankDocuments', rerankDocuments)
     .addNode('generate', generate)
     .addNode('rewrite', rewrite)
     .addNode('summarizeHistory', summarizeHistory)
     
     .addEdge(START, 'condenseQuestion')
     .addEdge('condenseQuestion', 'retrieve')
-    .addEdge('retrieve', 'gradeDocuments')
-    .addConditionalEdges('gradeDocuments', decideToGenerate, {
+    .addEdge('retrieve', 'rerankDocuments')
+    .addConditionalEdges('rerankDocuments', decideToGenerate, {
       rewrite: 'rewrite',
       generate: 'generate',
     })
