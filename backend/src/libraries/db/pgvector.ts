@@ -36,13 +36,12 @@ export const getVectorStore = async (): Promise<PGVectorStore> => {
     dimensions: 3072,
   });
 
-  // Create High-Accuracy HNSW Index (if it doesn't already exist)
-  // We use vector_cosine_ops because similaritySearch defaults to cosine distance
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS documents_embedding_hnsw_idx 
-    ON documents USING hnsw (embedding vector_cosine_ops) 
-    WITH (m = 24, ef_construction = 100);
-  `);
+  // Disable HNSW index for now since 3072 dimensions exceeds the 2000 limit
+  // await pool.query(`
+  //   CREATE INDEX IF NOT EXISTS documents_embedding_hnsw_idx 
+  //   ON documents USING hnsw (embedding vector_cosine_ops) 
+  //   WITH (m = 24, ef_construction = 100);
+  // `);
 
   return vectorStore;
 };

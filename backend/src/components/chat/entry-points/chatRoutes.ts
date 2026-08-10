@@ -42,16 +42,21 @@ router.post(
       });
       
       for await (const event of stream) {
+        console.log(`[LangGraph Stream] event: ${event.event}, name: ${event.name}`);
         if (event.event === 'on_chain_start') {
           // Filter for specific node starts
           if (['retrieve', 'rerankDocuments', 'generate', 'rewrite'].includes(event.name)) {
             res.write(`event: progress\ndata: ${JSON.stringify({ step: event.name })}\n\n`);
           }
         } else if (event.event === 'on_chat_model_stream') {
-          const chunk = event.data?.chunk;
-          if (chunk && chunk.content) {
-            tokensStreamed = true;
-            res.write(`event: token\ndata: ${JSON.stringify({ token: chunk.content })}\n\n`);
+          // Only stream tokens generated from the final 'generate' node to the client.
+          // This prevents internal utility nodes (like generateQueries or rewrite) from sending their internal tokens.
+          if (event.metadata?.langgraph_node === 'generate') {
+            const chunk = event.data?.chunk;
+            if (chunk && chunk.content) {
+              tokensStreamed = true;
+              res.write(`event: token\ndata: ${JSON.stringify({ token: chunk.content })}\n\n`);
+            }
           }
         } else if (event.event === 'on_chain_end') {
           if (event.name === 'generate') {

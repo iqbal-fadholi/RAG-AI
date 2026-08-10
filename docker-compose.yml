@@ -12,17 +12,17 @@ services:
       - pgvector-data:/var/lib/postgresql/data
 
   node-api:
-    build: .
+    build: ./backend
     ports:
       - "3000:3000"
     env_file:
-      - .env
+      - ./backend/.env
     depends_on:
       - pgvector
       - docling-service
 
   docling-service:
-    build: ./services/docling-api
+    build: ./backend/services/docling-api
     ports:
       - "8000:8000"
 

@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    background: radial-gradient(circle at top left, #231b42, #0d0a14 60%);
+    background-attachment: fixed;
+    color: #e5e1e4;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.surface-card, .glass-panel {
+    background-color: rgba(35, 30, 55, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.15);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+.action-button-primary {
+    background: linear-gradient(135deg, #7c3aed, #4f46e5);
+    box-shadow: 0 8px 24px -4px rgba(124, 58, 237, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}
+
+.action-button-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e5e1e4;
+}
+.action-button-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.user-bubble {
+    background: linear-gradient(135deg, #7c3aed, #4f46e5);
+    box-shadow: 0 8px 24px -4px rgba(124, 58, 237, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}

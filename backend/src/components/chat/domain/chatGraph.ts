@@ -1,14 +1,20 @@
-import { StateGraph, END, START, Annotation } from '@langchain/langgraph';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { PromptTemplate } from '@langchain/core/prompts';
-import { StringOutputParser } from '@langchain/core/output_parsers';
-import { z } from 'zod';
-import { Document } from '@langchain/core/documents';
-import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
-import { getVectorStore } from '../../../libraries/db/pgvector.js';
-import { config } from '../../../libraries/config/index.js';
-import { getPostgresSaver } from '../../../libraries/db/checkpoint.js';
-import { keywordSearch } from '../../../libraries/db/documents.js';
+import { StateGraph, END, START, Annotation } from "@langchain/langgraph";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { PromptTemplate } from "@langchain/core/prompts";
+import { StringOutputParser } from "@langchain/core/output_parsers";
+import { z } from "zod";
+import { Document } from "@langchain/core/documents";
+import {
+  BaseMessage,
+  HumanMessage,
+  AIMessage,
+  SystemMessage,
+} from "@langchain/core/messages";
+import { getVectorStore } from "../../../libraries/db/pgvector.js";
+import { config } from "../../../libraries/config/index.js";
+import { getPostgresSaver, pool } from "../../../libraries/db/checkpoint.js";
+import { keywordSearch } from "../../../libraries/db/documents.js";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 
 // 1. Define the State
 export const GraphState = Annotation.Root({
@@ -35,28 +41,34 @@ export const GraphState = Annotation.Root({
 
 const llm = new ChatGoogleGenerativeAI({
   apiKey: config.googleApiKey,
-  model: 'gemini-3.5-flash',
+  model: "gemini-3.1-flash-lite",
   temperature: 0,
+  maxRetries: 3,
 });
 
 const gradingLlmBase = new ChatGoogleGenerativeAI({
   apiKey: config.googleApiKey,
-  model: 'gemini-3.5-flash',
+  model: "gemini-3.1-flash-lite",
   temperature: 0,
   streaming: false,
+  maxRetries: 3,
 });
 
 // 2. Nodes
 
 async function generateQueries(state: typeof GraphState.State) {
-  console.log('---GENERATE MULTI-QUERIES---');
+  console.log("---GENERATE MULTI-QUERIES---");
   const { question, messages } = state;
-  
+
   const queryGenLlm = gradingLlmBase.withStructuredOutput(
     z.object({
-      queries: z.array(z.string()).min(1).max(3).describe("A list of 3 semantic variations of the search query"),
+      queries: z
+        .array(z.string())
+        .min(1)
+        .max(3)
+        .describe("A list of 3 semantic variations of the search query"),
     }),
-    { name: 'generate_queries' }
+    { name: "generate_queries" },
   );
 
   let prompt: any;
@@ -81,55 +93,61 @@ async function generateQueries(state: typeof GraphState.State) {
       
       Follow Up Input: {question}
     `);
-    const chatHistoryStr = messages.map(m => `${m._getType() === 'human' ? 'User' : 'AI'}: ${m.content}`).join('\n');
+    const chatHistoryStr = messages
+      .map((m) => `${m._getType() === "human" ? "User" : "AI"}: ${m.content}`)
+      .join("\n");
     chainOptions = { chat_history: chatHistoryStr, question: question };
   }
 
   const chain = prompt.pipe(queryGenLlm);
-  
+
   try {
     const res = await chain.invoke(chainOptions);
-    console.log(`Generated queries: ${res.queries.join(', ')}`);
+    console.log(`Generated queries: ${res.queries.join(", ")}`);
     return { searchQueries: res.queries };
   } catch (error) {
-    console.error('Failed to generate queries, falling back to original question');
+    console.error(
+      "Failed to generate queries, falling back to original question",
+    );
     return { searchQueries: [question] };
   }
 }
 
 async function retrieve(state: typeof GraphState.State) {
-  console.log('---HYBRID MULTI-QUERY RETRIEVE---');
-  
+  console.log("---HYBRID MULTI-QUERY RETRIEVE---");
+
   const vectorStore = await getVectorStore();
   const retriever = vectorStore.asRetriever({ k: 10 });
-  
+
   // Use generated queries or fallback to original question
-  const queries = state.searchQueries && state.searchQueries.length > 0 
-    ? state.searchQueries 
-    : [state.question];
+  const queries =
+    state.searchQueries && state.searchQueries.length > 0
+      ? state.searchQueries
+      : [state.question];
 
   // Execute both searches concurrently for ALL queries
-  const promises = queries.map(q => Promise.all([
-    retriever.invoke(q),
-    keywordSearch(q, 10)
-  ]));
+  const promises = queries.map((q) =>
+    Promise.all([retriever.invoke(q), keywordSearch(q, 10)]),
+  );
 
   const results = await Promise.all(promises);
 
   // Map to a common format and track rankings for Reciprocal Rank Fusion
-  const docMap = new Map<string, { doc: Document, rrfScore: number }>();
+  const docMap = new Map<string, { doc: Document; rrfScore: number }>();
   const K = 60; // Standard RRF constant
 
   const addScore = (docOrKDoc: any, rank: number, isKeyword: boolean) => {
     const key = isKeyword ? docOrKDoc.page_content : docOrKDoc.pageContent;
-    const current = docMap.get(key) || { 
-      doc: isKeyword ? new Document({ pageContent: key, metadata: docOrKDoc.metadata }) : docOrKDoc, 
-      rrfScore: 0 
+    const current = docMap.get(key) || {
+      doc: isKeyword
+        ? new Document({ pageContent: key, metadata: docOrKDoc.metadata })
+        : docOrKDoc,
+      rrfScore: 0,
     };
     current.rrfScore += 1 / (K + rank);
     docMap.set(key, current);
   };
-  
+
   results.forEach(([semanticDocs, keywordDocs]) => {
     semanticDocs.forEach((doc, index) => addScore(doc, index + 1, false));
     keywordDocs.forEach((kDoc, index) => addScore(kDoc, index + 1, true));
@@ -139,71 +157,101 @@ async function retrieve(state: typeof GraphState.State) {
   const finalDocs = Array.from(docMap.values())
     .sort((a, b) => b.rrfScore - a.rrfScore)
     .slice(0, 10)
-    .map(item => item.doc);
+    .map((item) => item.doc);
 
-  console.log(`Fused ${docMap.size} unique docs down to top ${finalDocs.length} using RRF.`);
+  console.log(
+    `Fused ${docMap.size} unique docs down to top ${finalDocs.length} using RRF.`,
+  );
   return { documents: finalDocs };
 }
 
 async function rerankDocuments(state: typeof GraphState.State) {
-  console.log('---RERANK DOCUMENTS---');
+  console.log("---RERANK DOCUMENTS---");
   const { question, documents } = state;
-  
+
+  if (!documents || documents.length === 0) return { documents: [] };
+
   const rerankingLlm = gradingLlmBase.withStructuredOutput(
     z.object({
-      score: z.number().int().min(1).max(10).describe("Relevance score from 1 to 10"),
+      scores: z
+        .array(
+          z.object({
+            docIndex: z
+              .number()
+              .int()
+              .describe("The index of the document being scored (0 to N-1)"),
+            score: z
+              .number()
+              .int()
+              .min(1)
+              .max(10)
+              .describe("Relevance score from 1 to 10"),
+          }),
+        )
+        .describe("List of scores for each document"),
     }),
-    { name: 'score_relevance' }
+    { name: "score_relevance_batch" },
   );
 
   const prompt = PromptTemplate.fromTemplate(`
-    You are an expert evaluator assessing the relevance of a retrieved document to a user question.
-    Here is the retrieved document: \n\n {document} \n\n
+    You are an expert evaluator assessing the relevance of retrieved documents to a user question.
     Here is the user question: {question}
-    Assign a relevance score from 1 to 10. 
+    
+    Here are the retrieved documents:
+    {documents_text}
+    
+    For each document, assign a relevance score from 1 to 10. 
     1 means completely irrelevant, 10 means highly relevant and directly answers the question.
+    Return an array of scores mapping to the document indices provided.
   `);
 
   const chain = prompt.pipe(rerankingLlm);
 
-  // Run the LLM on all 10 documents concurrently
-  const scoredDocs = await Promise.all(
-    documents.map(async (doc) => {
-      try {
-        const res = await chain.invoke({
-          document: doc.pageContent,
-          question: question,
-        });
-        return { doc, score: res.score };
-      } catch (error) {
-        // Fallback score if LLM fails
-        return { doc, score: 1 };
-      }
-    })
-  );
+  const docsText = documents
+    .map((doc, idx) => `--- Document [${idx}] ---\n${doc.pageContent}`)
+    .join("\n\n");
 
-  // Sort descending and keep the top 4 documents that have a score >= 4
-  const topDocs = scoredDocs
-    .filter(item => item.score >= 4)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
-    .map(item => item.doc);
+  try {
+    const res = await chain.invoke({
+      documents_text: docsText,
+      question: question,
+    });
 
-  return { documents: topDocs };
+    // Map scores back to documents
+    const scoredDocs = documents.map((doc, idx) => {
+      const match = res.scores.find((s: any) => s.docIndex === idx);
+      return { doc, score: match ? match.score : 1 };
+    });
+
+    const topDocs = scoredDocs
+      .filter((item) => item.score >= 4)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map((item) => item.doc);
+
+    return { documents: topDocs };
+  } catch (error) {
+    console.error(
+      "Batch reranking failed, keeping top 4 documents as fallback",
+      error,
+    );
+    return { documents: documents.slice(0, 4) };
+  }
 }
 
 async function generate(state: typeof GraphState.State) {
-  console.log('---GENERATE---');
+  console.log("---GENERATE---");
   const { question, documents, messages } = state;
-  
+
   if (!documents || documents.length === 0) {
-    const emptyAnswer = 'I could not find relevant information in the uploaded documents to answer your question.';
-    return { 
+    const emptyAnswer =
+      "I could not find relevant information in the uploaded documents to answer your question.";
+    return {
       answer: emptyAnswer,
-      messages: [new HumanMessage(question), new AIMessage(emptyAnswer)]
+      messages: [new HumanMessage(question), new AIMessage(emptyAnswer)],
     };
   }
-  
+
   const prompt = PromptTemplate.fromTemplate(`
     You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. 
     If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
@@ -222,39 +270,43 @@ async function generate(state: typeof GraphState.State) {
     Answer:
   `);
 
-  const chatHistoryStr = messages.map(m => `${m._getType() === 'human' ? 'User' : 'AI'}: ${m.content}`).join('\n');
-  
+  const chatHistoryStr = messages
+    .map((m) => `${m._getType() === "human" ? "User" : "AI"}: ${m.content}`)
+    .join("\n");
+
   // Format context with explicit Document IDs and Sources
-  const docsContent = documents.map((doc, index) => {
-    const sourceName = doc.metadata?.source || 'Unknown Source';
-    return `--- Document [${index + 1}] (Source: ${sourceName}) ---\n${doc.pageContent}`;
-  }).join('\n\n');
-  
+  const docsContent = documents
+    .map((doc, index) => {
+      const sourceName = doc.metadata?.source || "Unknown Source";
+      return `--- Document [${index + 1}] (Source: ${sourceName}) ---\n${doc.pageContent}`;
+    })
+    .join("\n\n");
+
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
-  
+
   const stream = await chain.stream({
     chat_history: chatHistoryStr,
     question: question,
     context: docsContent,
   });
 
-  let answer = '';
+  let answer = "";
   for await (const chunk of stream) {
     answer += chunk;
   }
 
   // Append new messages to history
-  return { 
+  return {
     answer,
-    messages: [new HumanMessage(question), new AIMessage(answer)]
+    messages: [new HumanMessage(question), new AIMessage(answer)],
   };
 }
 
 async function rewrite(state: typeof GraphState.State) {
-  console.log('---REWRITE QUESTION---');
+  console.log("---REWRITE QUESTION---");
   const { question, rewriteCount } = state;
   const currentCount = rewriteCount ?? 0;
-  
+
   const prompt = PromptTemplate.fromTemplate(`
     You are a question re-writer that converts an input question to a better version that is optimized 
     for vectorstore retrieval. Look at the input and try to reason about the underlying semantic intent / meaning.
@@ -266,97 +318,119 @@ async function rewrite(state: typeof GraphState.State) {
   `);
 
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
-  
+
   const betterQuestion = await chain.invoke({ question });
   return { question: betterQuestion, rewriteCount: currentCount + 1 };
 }
 
 async function summarizeHistory(state: typeof GraphState.State) {
-  console.log('---SUMMARIZE HISTORY---');
+  console.log("---SUMMARIZE HISTORY---");
   const { messages } = state;
-  
+
   // Summarize everything except the most recent pair
   const messagesToSummarize = messages.slice(0, -2);
   const recentMessages = messages.slice(-2);
-  
+
   const prompt = PromptTemplate.fromTemplate(`
     Summarize the following conversation concisely to serve as context for future turns:
     {chat_history}
   `);
 
-  const chatHistoryStr = messagesToSummarize.map(m => `${m._getType() === 'human' ? 'User' : 'AI'}: ${m.content}`).join('\n');
+  const chatHistoryStr = messagesToSummarize
+    .map((m) => `${m._getType() === "human" ? "User" : "AI"}: ${m.content}`)
+    .join("\n");
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
-  
+
   const summary = await chain.invoke({ chat_history: chatHistoryStr });
-  
+
   // Return the new messages list replacing old messages with the summary
-  // We use a custom object because we want to REPLACE the state, not append to it. 
+  // We use a custom object because we want to REPLACE the state, not append to it.
   // Wait, our reducer is x.concat(y), which means returning an array appends it.
-  // To replace it, we need to clear it. In LangGraph JS, to overwrite an array with a concat reducer, 
+  // To replace it, we need to clear it. In LangGraph JS, to overwrite an array with a concat reducer,
   // we would need a custom reducer. For now, since this MVP is simple, let's skip the summarization
   // OR we can change the reducer to handle overwrites if a special flag is passed.
-  // Given we are doing a quick MVP, let's keep it simple: we won't rewrite the array, 
+  // Given we are doing a quick MVP, let's keep it simple: we won't rewrite the array,
   // we'll just let the state grow. We will comment this out for now to avoid complexity in the reducer.
-  console.log('Skipping summary for now due to reducer complexity in MVP.');
-  return {}; 
+  console.log("Skipping summary for now due to reducer complexity in MVP.");
+  return {};
 }
 
 // 3. Edges
 
 function decideToGenerate(state: typeof GraphState.State) {
-  console.log('---DECIDE TO GENERATE---');
+  console.log("---DECIDE TO GENERATE---");
   const { documents, rewriteCount } = state;
   const count = rewriteCount ?? 0;
-  
+
   if (!documents || documents.length === 0) {
-    if (count >= 3) {
-      console.log('---DECISION: ALL DOCUMENTS ARE NOT RELEVANT, MAX REWRITES REACHED. GENERATE---');
-      return 'generate';
+    if (count >= 1) {
+      console.log(
+        "---DECISION: ALL DOCUMENTS ARE NOT RELEVANT, MAX REWRITES REACHED. GENERATE---",
+      );
+      return "generate";
     }
-    console.log(`---DECISION: ALL DOCUMENTS ARE NOT RELEVANT, REWRITE (attempt ${count + 1}/3)---`);
-    return 'rewrite';
+    console.log(
+      `---DECISION: ALL DOCUMENTS ARE NOT RELEVANT, REWRITE (attempt ${count + 1}/1)---`,
+    );
+    return "rewrite";
   }
-  
-  console.log('---DECISION: GENERATE---');
-  return 'generate';
+
+  console.log("---DECISION: GENERATE---");
+  return "generate";
 }
 
 function decideToSummarize(state: typeof GraphState.State) {
-  console.log('---DECIDE TO SUMMARIZE---');
+  console.log("---DECIDE TO SUMMARIZE---");
   const { messages } = state;
-  
+
   if (messages.length > 6) {
-    return 'summarizeHistory';
+    return "summarizeHistory";
   }
-  
+
   return END;
 }
 
 // 4. Build Graph
+
+// Initialize database checkpointer tables asynchronously in the background
+(async () => {
+  try {
+    await getPostgresSaver();
+    console.log("Database tables initialized successfully.");
+  } catch (err) {
+    console.error("Failed to initialize database tables:", err);
+  }
+})();
+
+const checkpointer = new PostgresSaver(pool);
+
+const workflow = new StateGraph(GraphState)
+  .addNode("generateQueries", generateQueries)
+  .addNode("retrieve", retrieve)
+  .addNode("rerankDocuments", rerankDocuments)
+  .addNode("generate", generate)
+  .addNode("rewrite", rewrite)
+  .addNode("summarizeHistory", summarizeHistory)
+
+  .addEdge(START, "generateQueries")
+  .addEdge("generateQueries", "retrieve")
+  .addEdge("retrieve", "rerankDocuments")
+  .addConditionalEdges("rerankDocuments", decideToGenerate, {
+    rewrite: "rewrite",
+    generate: "generate",
+  })
+  .addEdge("rewrite", "retrieve")
+  .addConditionalEdges("generate", decideToSummarize, {
+    summarizeHistory: "summarizeHistory",
+    [END]: END,
+  })
+  .addEdge("summarizeHistory", END);
+
+export const appGraph = workflow.compile({ checkpointer });
+
+// Maintain backward compatibility for Express API routes
 export const getAppGraph = async () => {
-  const checkpointer = await getPostgresSaver();
-
-  const workflow = new StateGraph(GraphState)
-    .addNode('generateQueries', generateQueries)
-    .addNode('retrieve', retrieve)
-    .addNode('rerankDocuments', rerankDocuments)
-    .addNode('generate', generate)
-    .addNode('rewrite', rewrite)
-    .addNode('summarizeHistory', summarizeHistory)
-    
-    .addEdge(START, 'generateQueries')
-    .addEdge('generateQueries', 'retrieve')
-    .addEdge('retrieve', 'rerankDocuments')
-    .addConditionalEdges('rerankDocuments', decideToGenerate, {
-      rewrite: 'rewrite',
-      generate: 'generate',
-    })
-    .addEdge('rewrite', 'retrieve')
-    .addConditionalEdges('generate', decideToSummarize, {
-      summarizeHistory: 'summarizeHistory',
-      [END]: END,
-    })
-    .addEdge('summarizeHistory', END);
-
-  return workflow.compile({ checkpointer });
+  return appGraph;
 };
+
+
