@@ -11,7 +11,10 @@ import {
   editStatusSchema,
   approveStatusSchema,
 } from '../domain/ingestionSchema.js';
-import { listDocuments, deleteDocument } from '../../../libraries/db/documents.js';
+import { listDocuments, deleteDocument, updateDocumentStatus, getDocumentStatus } from '../../../libraries/db/documents.js';
+import { uploadFileToS3 } from '../../../libraries/storage/s3.js';
+import { ingestionQueue } from '../../../libraries/queue/ingestionQueue.js';
+import { pool } from '../../../libraries/db/checkpoint.js';
 
 const router = Router();
 
@@ -27,16 +30,27 @@ router.post(
     }
 
     const thread_id = uuidv4();
-    const graphConfig = { configurable: { thread_id } };
-
     const { buffer, mimetype, originalname } = req.file;
 
-    await ingestionGraph.invoke(
-      { fileBuffer: buffer, fileName: originalname, mimeType: mimetype },
-      graphConfig
+    // Save to MinIO
+    const s3_key = `${thread_id}-${originalname}`;
+    await uploadFileToS3(s3_key, buffer, mimetype);
+
+    // Save to Postgres
+    await pool.query(
+      `INSERT INTO uploaded_files (id, filename, status, s3_key) VALUES ($1, $2, $3, $4)`,
+      [thread_id, originalname, 'queued', s3_key]
     );
 
-    res.json({ message: 'Ingestion started, waiting for review', thread_id });
+    // Enqueue job
+    await ingestionQueue.add('ingest', {
+      thread_id,
+      s3_key,
+      fileName: originalname,
+      mimeType: mimetype,
+    });
+
+    res.json({ message: 'Ingestion queued', thread_id });
   })
 );
 
@@ -44,18 +58,37 @@ router.get(
   '/status/:thread_id',
   asyncWrapper(async (req: Request, res: Response): Promise<void> => {
     const { thread_id } = getStatusSchema.parse(req.params);
-    const graphConfig = { configurable: { thread_id } };
+    
+    const dbStatus = await getDocumentStatus(thread_id);
+    if (!dbStatus) {
+      throw new AppError('NotFound', 404, 'Thread not found');
+    }
 
-    const state = await ingestionGraph.getState(graphConfig);
-    if (!state || !state.values) {
-      throw new AppError('NotFound', 404, 'Thread not found or no state available');
+    let reviewStatus = dbStatus;
+    let fileName = '';
+    let extractedMarkdown = '';
+    let next: string[] = [];
+
+    // If it's reached the graph, try fetching the graph state
+    if (['pending_review', 'approved', 'done'].includes(dbStatus)) {
+      const graphConfig = { configurable: { thread_id } };
+      const state = await ingestionGraph.getState(graphConfig);
+      
+      if (state && state.values) {
+        let s = state.values.reviewStatus || dbStatus;
+        if (s === 'pending') s = 'pending_review';
+        reviewStatus = s;
+        fileName = state.values.fileName || '';
+        extractedMarkdown = state.values.extractedMarkdown || '';
+        next = state.next || [];
+      }
     }
 
     res.json({
-      status: state.values.reviewStatus,
-      fileName: state.values.fileName,
-      extractedMarkdown: state.values.extractedMarkdown,
-      next: state.next,
+      status: reviewStatus,
+      fileName,
+      extractedMarkdown,
+      next,
     });
   })
 );

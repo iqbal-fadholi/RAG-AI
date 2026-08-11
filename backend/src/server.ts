@@ -1,13 +1,19 @@
 import { app } from './app.js';
 import { config } from './libraries/config/index.js';
+import { initWorker } from './libraries/queue/ingestionQueue.js';
+
+const worker = initWorker();
 
 const server = app.listen(config.port, () => {
   console.log(`RAG MVP server running on port ${config.port}`);
+  console.log(`BullMQ worker initialized`);
 });
 
-const gracefulShutdown = (signal: string) => {
+const gracefulShutdown = async (signal: string) => {
   console.log(`Received ${signal}. Shutting down gracefully...`);
   
+  await worker.close();
+
   server.close(() => {
     console.log('HTTP server closed.');
     // Exit clean

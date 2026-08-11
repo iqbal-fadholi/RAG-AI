@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { FileText, CheckCircle, Edit2, Code, AlignLeft, Copy, TableProperties, UploadCloud } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { FileText, CheckCircle, Edit2, Code, AlignLeft, Copy, TableProperties, UploadCloud, Trash2 } from "lucide-react";
 
 type DocStatus = 'idle' | 'uploading' | 'processing' | 'reviewing' | 'approving' | 'done';
 
@@ -11,12 +11,31 @@ interface ParsedDoc {
   metadata?: any;
 }
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+
 export function IngestionDashboard() {
   const [status, setStatus] = useState<DocStatus>('idle');
+  const [detailedStatus, setDetailedStatus] = useState<string>('');
   const [file, setFile] = useState<File | null>(null);
   const [parsedDoc, setParsedDoc] = useState<ParsedDoc | null>(null);
   const [editedMarkdown, setEditedMarkdown] = useState("");
+  const [documents, setDocuments] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch(`${API_URL}/ingest/files`);
+      if (!res.ok) throw new Error("Failed to fetch history");
+      const data = await res.json();
+      setDocuments(data);
+    } catch (error) {
+      console.error("Error fetching documents history:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -28,7 +47,7 @@ export function IngestionDashboard() {
       formData.append("file", selectedFile);
       
       try {
-        const res = await fetch("http://localhost:3000/ingest/start", {
+        const res = await fetch(`${API_URL}/ingest/start`, {
           method: "POST",
           body: formData
         });
@@ -38,6 +57,7 @@ export function IngestionDashboard() {
         const data = await res.json();
         
         setStatus('processing');
+        fetchHistory();
         pollStatus(data.thread_id);
       } catch (error) {
         console.error(error);
@@ -48,16 +68,25 @@ export function IngestionDashboard() {
 
   const pollStatus = async (docId: string) => {
     try {
-      const res = await fetch(`http://localhost:3000/ingest/status/${docId}`);
+      const res = await fetch(`${API_URL}/ingest/status/${docId}`);
+      if (!res.ok) throw new Error('Status fetch failed');
       const data = await res.json();
       
-      if (data.status === 'completed') {
-        setParsedDoc({ doc_id: docId, markdown: data.markdown, metadata: data.metadata });
-        setEditedMarkdown(data.markdown);
+      setDetailedStatus(data.status);
+      
+      if (data.status === 'pending_review') {
+        setParsedDoc({ doc_id: docId, markdown: data.extractedMarkdown, metadata: data.metadata });
+        setEditedMarkdown(data.extractedMarkdown);
         setStatus('reviewing');
-      } else if (data.status === 'failed') {
+        fetchHistory();
+      } else if (data.status === 'done' || data.status === 'approved') {
+        setStatus('done');
+        fetchHistory();
+      } else if (data.status === 'error') {
         setStatus('idle');
+        fetchHistory();
       } else {
+        fetchHistory();
         setTimeout(() => pollStatus(docId), 2000);
       }
     } catch (error) {
@@ -70,12 +99,14 @@ export function IngestionDashboard() {
     if (!parsedDoc) return;
     setStatus('approving');
     try {
-      await fetch("http://localhost:3000/ingest/edit", {
+      const res = await fetch(`${API_URL}/ingest/edit/${parsedDoc.doc_id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doc_id: parsedDoc.doc_id, updated_markdown: editedMarkdown })
+        body: JSON.stringify({ markdown: editedMarkdown })
       });
+      if (!res.ok) throw new Error("Save edits failed");
       setStatus('reviewing');
+      fetchHistory();
     } catch (error) {
       console.error(error);
       setStatus('reviewing');
@@ -86,12 +117,13 @@ export function IngestionDashboard() {
     if (!parsedDoc) return;
     setStatus('approving');
     try {
-      await fetch("http://localhost:3000/ingest/approve", {
+      const res = await fetch(`${API_URL}/ingest/approve/${parsedDoc.doc_id}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doc_id: parsedDoc.doc_id })
+        headers: { "Content-Type": "application/json" }
       });
+      if (!res.ok) throw new Error("Approve failed");
       setStatus('done');
+      fetchHistory();
       // Reset after a moment
       setTimeout(() => {
         setStatus('idle');
@@ -101,6 +133,88 @@ export function IngestionDashboard() {
     } catch (error) {
       console.error(error);
       setStatus('reviewing');
+    }
+  };
+
+  const handleDelete = async (docId: string) => {
+    if (!confirm("Are you sure you want to delete this document and its associated vector chunks?")) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/ingest/files/${docId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      fetchHistory();
+      if (parsedDoc && parsedDoc.doc_id === docId) {
+        setStatus('idle');
+        setFile(null);
+        setParsedDoc(null);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleResumeReview = async (docId: string, filename: string) => {
+    setFile({ name: filename, size: 0 } as File);
+    setStatus('processing');
+    setDetailedStatus('Resuming review...');
+    pollStatus(docId);
+  };
+
+  const getFileIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    if (ext === 'csv' || ext === 'xlsx') return <TableProperties className="w-5 h-5 text-primary/70" />;
+    return <FileText className="w-5 h-5 text-primary/70" />;
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'queued':
+        return (
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-variant border border-outline-variant text-on-surface font-label-md text-[12px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant/50"></span>
+            Queued
+          </span>
+        );
+      case 'processing':
+        return (
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary font-label-md text-[12px] animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+            Processing
+          </span>
+        );
+      case 'pending_review':
+      case 'pending':
+        return (
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 font-label-md text-[12px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
+            Pending Review
+          </span>
+        );
+      case 'approved':
+      case 'done':
+        return (
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-label-md text-[12px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+            Approved
+          </span>
+        );
+      case 'error':
+        return (
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 font-label-md text-[12px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+            Error
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-variant border border-outline-variant text-on-surface font-label-md text-[12px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant/50"></span>
+            {status}
+          </span>
+        );
     }
   };
 
@@ -129,7 +243,7 @@ export function IngestionDashboard() {
                 <>
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-sm"></div>
                   <p className="font-label-md text-label-md text-on-surface mb-xs">Processing Document...</p>
-                  <p className="font-body-sm text-body-sm text-on-surface-variant">Extracting text using Docling...</p>
+                  <p className="font-body-sm text-body-sm text-on-surface-variant capitalize">{detailedStatus || 'Queued in background worker...'}</p>
                 </>
              ) : (
                 <>
@@ -243,37 +357,54 @@ export function IngestionDashboard() {
                   <th className="px-6 py-4 font-medium">Status</th>
                   <th className="px-6 py-4 font-medium">Date Added</th>
                   <th className="px-6 py-4 font-medium">Type</th>
+                  <th className="px-6 py-4 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="text-body-sm text-on-surface">
-                <tr className="border-b border-outline-variant/30 hover:bg-surface-variant/50 transition-colors">
-                  <td className="px-6 py-4 flex items-center gap-3 font-medium">
-                    <FileText className="w-5 h-5 text-primary/70" />
-                    Q2_Market_Analysis.pdf
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-variant border border-outline-variant text-on-surface font-label-md text-[12px]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                      Approved
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-on-surface-variant">Oct 05, 2023</td>
-                  <td className="px-6 py-4 text-on-surface-variant">PDF</td>
-                </tr>
-                <tr className="border-b border-outline-variant/30 hover:bg-surface-variant/50 transition-colors">
-                  <td className="px-6 py-4 flex items-center gap-3 font-medium">
-                    <TableProperties className="w-5 h-5 text-primary/70" />
-                    user_feedback_log.csv
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-variant border border-outline-variant text-on-surface font-label-md text-[12px]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                      Approved
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-on-surface-variant">Sep 28, 2023</td>
-                  <td className="px-6 py-4 text-on-surface-variant">CSV</td>
-                </tr>
+                {documents.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant">
+                      No uploaded documents found.
+                    </td>
+                  </tr>
+                ) : (
+                  documents.map((doc) => (
+                    <tr key={doc.id} className="border-b border-outline-variant/30 hover:bg-surface-variant/50 transition-colors">
+                      <td className="px-6 py-4 flex items-center gap-3 font-medium text-white truncate max-w-[250px]" title={doc.filename}>
+                        {getFileIcon(doc.filename)}
+                        {doc.filename}
+                      </td>
+                      <td className="px-6 py-4">
+                        {getStatusBadge(doc.status)}
+                      </td>
+                      <td className="px-6 py-4 text-on-surface-variant">
+                        {new Date(doc.uploaded_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </td>
+                      <td className="px-6 py-4 text-on-surface-variant font-medium">
+                        {doc.filename.split('.').pop()?.toUpperCase() || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          {(doc.status === 'pending_review' || doc.status === 'pending') && (
+                            <button
+                              onClick={() => handleResumeReview(doc.id, doc.filename)}
+                              className="px-3 py-1 rounded-lg bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 transition-colors font-label-md text-[12px]"
+                            >
+                              Review
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDelete(doc.id)}
+                            className="text-on-surface-variant hover:text-red-500 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
+                            title="Delete Document"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

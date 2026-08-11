@@ -5,6 +5,8 @@ export const setupDocumentsTable = async () => {
     CREATE TABLE IF NOT EXISTS uploaded_files (
       id UUID PRIMARY KEY,
       filename TEXT NOT NULL,
+      status TEXT DEFAULT 'queued',
+      s3_key TEXT,
       uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
   `;
@@ -55,4 +57,13 @@ export const keywordSearch = async (query: string, limit: number = 10): Promise<
   `;
   const result = await pool.query(sql, [query, limit]);
   return result.rows;
+};
+
+export const updateDocumentStatus = async (id: string, status: string) => {
+  await pool.query('UPDATE uploaded_files SET status = $1 WHERE id = $2', [status, id]);
+};
+
+export const getDocumentStatus = async (id: string): Promise<string | null> => {
+  const result = await pool.query('SELECT status FROM uploaded_files WHERE id = $1', [id]);
+  return result.rows[0]?.status || null;
 };
