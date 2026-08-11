@@ -32,10 +32,13 @@ export function IngestionDashboard() {
           method: "POST",
           body: formData
         });
+        if (!res.ok) {
+          throw new Error(`Failed: ${res.status}`);
+        }
         const data = await res.json();
         
         setStatus('processing');
-        pollStatus(data.doc_id);
+        pollStatus(data.thread_id);
       } catch (error) {
         console.error(error);
         setStatus('idle');

@@ -41,14 +41,14 @@ export const GraphState = Annotation.Root({
 
 const llm = new ChatGoogleGenerativeAI({
   apiKey: config.googleApiKey,
-  model: "gemini-3.1-flash-lite",
+  model: config.googleModel,
   temperature: 0,
   maxRetries: 3,
 });
 
 const gradingLlmBase = new ChatGoogleGenerativeAI({
   apiKey: config.googleApiKey,
-  model: "gemini-3.1-flash-lite",
+  model: config.googleModel,
   temperature: 0,
   streaming: false,
   maxRetries: 3,

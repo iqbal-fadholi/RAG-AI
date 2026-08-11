@@ -6,6 +6,7 @@ dotenv.config();
 const configSchema = z.object({
   port: z.coerce.number().default(3000),
   googleApiKey: z.string().min(1, 'GOOGLE_API_KEY is required'),
+  googleModel: z.string().default('gemini-3.1-flash-lite'),
   doclingServiceUrl: z.string().default('http://docling-service:8000'),
   db: z.object({
     host: z.string().default('localhost'),
@@ -19,6 +20,7 @@ const configSchema = z.object({
 const rawConfig = {
   port: process.env.PORT,
   googleApiKey: process.env.GOOGLE_API_KEY,
+  googleModel: process.env.GOOGLE_MODEL,
   doclingServiceUrl: process.env.DOCLING_SERVICE_URL,
   db: {
     host: process.env.DB_HOST,
