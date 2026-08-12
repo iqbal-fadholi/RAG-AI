@@ -14,3 +14,8 @@ Follow these guidelines when building and exposing LangGraph workflows in this w
 - **Node Filtering**: When consuming `streamEvents` (v2) in Express/SSE handlers, do not forward all `on_chat_model_stream` events blindly to the client.
 - **Avoid Token Leakage**: Filter model stream events by the originating node name using `event.metadata?.langgraph_node === 'generate'`. This prevents internal tokens (e.g., from query rewriters or query expansion LLM calls) from leaking into the final answer chat window.
 - **Fallback Answers**: Only set streaming trackers (like `tokensStreamed`) when tokens are successfully sent from the final generation node. This ensures that static fallback answers (when the LLM is skipped due to 0 retrieved docs) are correctly written during the `on_chain_end` phase.
+
+## 4. Long-Running Workflows
+- **Asynchronous Execution**: Any long-running workflow (like document ingestion or complex agentic reasoning) must not block the main Express HTTP thread.
+- **Queueing Strategy**: Push the task to a background queue (e.g., BullMQ backed by Redis).
+- **Status Tracking**: Store granular statuses in the PostgreSQL database so the frontend can poll for progress (e.g., `queued`, `processing...`, `done`), allowing system resilience and UI responsiveness.

@@ -25,6 +25,8 @@ services:
     build: ./backend/services/docling-api
     ports:
       - "8000:8000"
+    environment:
+      TORCHDYNAMO_DISABLE: 1
 
   redis:
     image: redis:alpine

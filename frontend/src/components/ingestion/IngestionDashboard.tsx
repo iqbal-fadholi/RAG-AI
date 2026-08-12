@@ -2,8 +2,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import { FileText, CheckCircle, Edit2, Code, AlignLeft, Copy, TableProperties, UploadCloud, Trash2 } from "lucide-react";
+import axios from "axios";
 
-type DocStatus = 'idle' | 'uploading' | 'processing' | 'reviewing' | 'approving' | 'done';
+type DocStatus = 'idle' | 'uploading' | 'reviewing' | 'approving';
 
 interface ParsedDoc {
   doc_id: string;
@@ -15,7 +16,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 export function IngestionDashboard() {
   const [status, setStatus] = useState<DocStatus>('idle');
-  const [detailedStatus, setDetailedStatus] = useState<string>('');
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [parsedDoc, setParsedDoc] = useState<ParsedDoc | null>(null);
   const [editedMarkdown, setEditedMarkdown] = useState("");
@@ -35,6 +36,8 @@ export function IngestionDashboard() {
 
   useEffect(() => {
     fetchHistory();
+    const interval = setInterval(fetchHistory, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,56 +45,31 @@ export function IngestionDashboard() {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
       setStatus('uploading');
+      setUploadProgress(0);
       
       const formData = new FormData();
       formData.append("file", selectedFile);
       
       try {
-        const res = await fetch(`${API_URL}/ingest/start`, {
-          method: "POST",
-          body: formData
+        await axios.post(`${API_URL}/ingest/start`, formData, {
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              setUploadProgress(percentCompleted);
+            }
+          }
         });
-        if (!res.ok) {
-          throw new Error(`Failed: ${res.status}`);
-        }
-        const data = await res.json();
         
-        setStatus('processing');
+        setStatus('idle');
+        setUploadProgress(0);
+        setFile(null);
         fetchHistory();
-        pollStatus(data.thread_id);
       } catch (error) {
         console.error(error);
         setStatus('idle');
+        setUploadProgress(0);
+        setFile(null);
       }
-    }
-  };
-
-  const pollStatus = async (docId: string) => {
-    try {
-      const res = await fetch(`${API_URL}/ingest/status/${docId}`);
-      if (!res.ok) throw new Error('Status fetch failed');
-      const data = await res.json();
-      
-      setDetailedStatus(data.status);
-      
-      if (data.status === 'pending_review') {
-        setParsedDoc({ doc_id: docId, markdown: data.extractedMarkdown, metadata: data.metadata });
-        setEditedMarkdown(data.extractedMarkdown);
-        setStatus('reviewing');
-        fetchHistory();
-      } else if (data.status === 'done' || data.status === 'approved') {
-        setStatus('done');
-        fetchHistory();
-      } else if (data.status === 'error') {
-        setStatus('idle');
-        fetchHistory();
-      } else {
-        fetchHistory();
-        setTimeout(() => pollStatus(docId), 2000);
-      }
-    } catch (error) {
-      console.error(error);
-      setStatus('idle');
     }
   };
 
@@ -106,7 +84,6 @@ export function IngestionDashboard() {
       });
       if (!res.ok) throw new Error("Save edits failed");
       setStatus('reviewing');
-      fetchHistory();
     } catch (error) {
       console.error(error);
       setStatus('reviewing');
@@ -122,14 +99,11 @@ export function IngestionDashboard() {
         headers: { "Content-Type": "application/json" }
       });
       if (!res.ok) throw new Error("Approve failed");
-      setStatus('done');
+      
+      setStatus('idle');
+      setFile(null);
+      setParsedDoc(null);
       fetchHistory();
-      // Reset after a moment
-      setTimeout(() => {
-        setStatus('idle');
-        setFile(null);
-        setParsedDoc(null);
-      }, 2000);
     } catch (error) {
       console.error(error);
       setStatus('reviewing');
@@ -158,9 +132,22 @@ export function IngestionDashboard() {
 
   const handleResumeReview = async (docId: string, filename: string) => {
     setFile({ name: filename, size: 0 } as File);
-    setStatus('processing');
-    setDetailedStatus('Resuming review...');
-    pollStatus(docId);
+    
+    try {
+      const res = await fetch(`${API_URL}/ingest/status/${docId}`);
+      if (!res.ok) throw new Error('Status fetch failed');
+      const data = await res.json();
+      
+      if (data.status === 'pending_review' || data.status === 'pending') {
+        setParsedDoc({ doc_id: docId, markdown: data.extractedMarkdown, metadata: data.metadata });
+        setEditedMarkdown(data.extractedMarkdown);
+        setStatus('reviewing');
+      } else {
+        alert(`Document cannot be reviewed. Current status: ${data.status}`);
+      }
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const getFileIcon = (filename: string) => {
@@ -169,8 +156,8 @@ export function IngestionDashboard() {
     return <FileText className="w-5 h-5 text-primary/70" />;
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
+  const getStatusBadge = (docStatus: string) => {
+    switch (docStatus) {
       case 'queued':
         return (
           <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-variant border border-outline-variant text-on-surface font-label-md text-[12px]">
@@ -179,10 +166,12 @@ export function IngestionDashboard() {
           </span>
         );
       case 'processing':
+      case 'extracting text...':
+      case 'chunking and saving...':
         return (
           <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary font-label-md text-[12px] animate-pulse">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
-            Processing
+            {docStatus.replace(/\.\.\.$/, '').replace(/\b\w/g, l => l.toUpperCase())}
           </span>
         );
       case 'pending_review':
@@ -198,7 +187,7 @@ export function IngestionDashboard() {
         return (
           <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-label-md text-[12px]">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            Approved
+            Done
           </span>
         );
       case 'error':
@@ -212,7 +201,7 @@ export function IngestionDashboard() {
         return (
           <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-variant border border-outline-variant text-on-surface font-label-md text-[12px]">
             <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant/50"></span>
-            {status}
+            {docStatus}
           </span>
         );
     }
@@ -221,7 +210,7 @@ export function IngestionDashboard() {
   return (
     <div className="w-full flex flex-col gap-12">
       {/* Step 1: Upload Zone */}
-      {(status === 'idle' || status === 'uploading' || status === 'processing' || status === 'done') && (
+      {(status === 'idle' || status === 'uploading') && (
         <section className="w-full mb-xl">
           <input 
             type="file" 
@@ -231,20 +220,20 @@ export function IngestionDashboard() {
             accept=".pdf,.docx,.txt,.md" 
           />
           <div 
-            className={`glass-panel border-dashed rounded-[2rem] p-xl flex flex-col items-center justify-center text-center cursor-pointer transition-colors h-64 ${status === 'uploading' || status === 'processing' ? 'opacity-50 pointer-events-none' : 'hover:border-outline'}`}
+            className={`glass-panel border-dashed rounded-[2rem] p-xl flex flex-col items-center justify-center text-center cursor-pointer transition-colors h-64 ${status === 'uploading' ? 'opacity-50 pointer-events-none' : 'hover:border-outline'}`}
             onClick={() => status === 'idle' && fileInputRef.current?.click()}
           >
-             {status === 'done' ? (
-                <>
-                  <CheckCircle className="w-12 h-12 text-primary mb-sm" />
-                  <p className="font-label-md text-label-md text-on-surface mb-xs">Document Ingested Successfully!</p>
-                </>
-             ) : status === 'processing' ? (
-                <>
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-sm"></div>
-                  <p className="font-label-md text-label-md text-on-surface mb-xs">Processing Document...</p>
-                  <p className="font-body-sm text-body-sm text-on-surface-variant capitalize">{detailedStatus || 'Queued in background worker...'}</p>
-                </>
+             {status === 'uploading' ? (
+                <div className="w-full max-w-md flex flex-col items-center">
+                  <div className="w-full bg-surface-variant rounded-full h-4 mb-4 overflow-hidden border border-outline-variant">
+                    <div 
+                      className="bg-primary h-4 rounded-full transition-all duration-300 ease-out" 
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                  <p className="font-label-md text-label-md text-on-surface mb-xs">Uploading Document...</p>
+                  <p className="font-body-sm text-body-sm text-primary font-bold">{uploadProgress}%</p>
+                </div>
              ) : (
                 <>
                   <UploadCloud className="w-12 h-12 text-on-surface-variant mb-sm" />
@@ -296,6 +285,12 @@ export function IngestionDashboard() {
 
               <div className="mt-auto pt-6 border-t border-outline-variant flex flex-col gap-4">
                 <button 
+                  onClick={() => setStatus('idle')}
+                  className="w-full py-3 px-4 rounded-xl border border-outline-variant font-label-md text-label-md transition-colors flex justify-center items-center gap-2 hover:bg-surface-variant text-on-surface-variant"
+                >
+                  Close Review
+                </button>
+                <button 
                   onClick={handleSaveEdits}
                   disabled={status === 'approving'}
                   className="w-full py-3 px-4 rounded-xl action-button-secondary font-label-md text-label-md transition-colors flex justify-center items-center gap-2 disabled:opacity-50"
@@ -343,11 +338,15 @@ export function IngestionDashboard() {
         </section>
       )}
 
-      {/* History Table (Mock data for UI matching) */}
+      {/* History Table */}
       <section className="w-full mt-8">
         <div className="glass-panel rounded-[2rem] overflow-hidden shadow-2xl">
-          <div className="px-8 py-6 border-b border-outline-variant bg-surface-container-high/30">
+          <div className="px-8 py-6 border-b border-outline-variant bg-surface-container-high/30 flex justify-between items-center">
             <h2 className="font-headline-md text-headline-md text-white">Ingested Documents History</h2>
+            <div className="flex items-center gap-2">
+               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+               <span className="text-on-surface-variant font-label-md text-label-md">Live Updates</span>
+            </div>
           </div>
           <div className="overflow-x-auto p-4">
             <table className="w-full text-left border-collapse">

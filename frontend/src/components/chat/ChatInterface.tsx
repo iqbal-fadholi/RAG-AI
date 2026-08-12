@@ -68,7 +68,7 @@ export function ChatInterface() {
       const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, thread_id: threadId }),
+        body: JSON.stringify({ question, ...(threadId ? { thread_id: threadId } : {}) }),
       });
 
       if (!response.body) throw new Error("No response body");

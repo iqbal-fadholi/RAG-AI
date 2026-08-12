@@ -25,23 +25,29 @@ router.post(
   '/start',
   upload.single('file'),
   asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    console.log('[API] /ingest/start called');
     if (!req.file) {
+      console.log('[API] /ingest/start error: No file uploaded');
       throw new AppError('BadRequest', 400, 'No file uploaded');
     }
 
     const thread_id = uuidv4();
     const { buffer, mimetype, originalname } = req.file;
+    console.log(`[API] Processing file: ${originalname} (${mimetype})`);
 
     // Save to MinIO
     const s3_key = `${thread_id}-${originalname}`;
+    console.log(`[API] Uploading to MinIO: ${s3_key}`);
     await uploadFileToS3(s3_key, buffer, mimetype);
 
+    console.log(`[API] Saving to Postgres: ${thread_id}`);
     // Save to Postgres
     await pool.query(
       `INSERT INTO uploaded_files (id, filename, status, s3_key) VALUES ($1, $2, $3, $4)`,
       [thread_id, originalname, 'queued', s3_key]
     );
 
+    console.log(`[API] Enqueueing to BullMQ: ${thread_id}`);
     // Enqueue job
     await ingestionQueue.add('ingest', {
       thread_id,
@@ -50,6 +56,7 @@ router.post(
       mimeType: mimetype,
     });
 
+    console.log(`[API] Returning 200: ${thread_id}`);
     res.json({ message: 'Ingestion queued', thread_id });
   })
 );
