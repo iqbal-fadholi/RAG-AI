@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This is a [Next.js](https://nextjs.org) frontend application for RAG.ai.
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies and run the development server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Architecture & Best Practices
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This project strictly follows a feature-based architecture to maintain scalability and clean separation of concerns.
 
-## Learn More
+### 1. Feature-Based Structure
+All domain logic and components are encapsulated within `src/features/`. For example, the `chat` and `ingestion` domains have their own `components`, `store`, and `hooks` folders.
 
-To learn more about Next.js, take a look at the following resources:
+### 2. State Management (Zustand)
+We use **Zustand** for managing complex, cross-component UI state. Stores are located within their respective feature directories (e.g., `src/features/chat/store/useChatStore.ts`).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 3. Data Fetching (SWR)
+Client-side data fetching and polling is handled via **SWR**. Custom hooks (e.g., `useDocuments.ts`) wrap SWR calls to keep components clean and automatically manage caching, revalidation, and loading states.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 4. Component Granularity & Thin Pages
+Next.js page components (`src/app/**/page.tsx`) should serve strictly as **thin orchestrators**. They compose smaller, highly-focused components and pass down state.
+Large UI sections (like sidebars, tabs, or complex forms) must be extracted into their own files within `src/features/<feature>/components/`.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 5. Pure Logic Extraction
+To maintain clean React components, complex pure logic (e.g., regex matching, complex data transformations) should be extracted into `src/features/<feature>/utils/`.
