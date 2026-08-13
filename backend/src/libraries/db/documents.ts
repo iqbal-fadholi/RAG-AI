@@ -67,3 +67,22 @@ export const getDocumentStatus = async (id: string): Promise<string | null> => {
   const result = await pool.query('SELECT status FROM uploaded_files WHERE id = $1', [id]);
   return result.rows[0]?.status || null;
 };
+
+export const getDocumentById = async (id: string) => {
+  const result = await pool.query('SELECT * FROM uploaded_files WHERE id = $1', [id]);
+  return result.rows[0] || null;
+};
+
+export interface ChunkResult {
+  id: string;
+  page_content: string;
+  metadata: any;
+}
+
+export const getChunksByFileId = async (fileId: string): Promise<ChunkResult[]> => {
+  const result = await pool.query(
+    `SELECT id, page_content, metadata FROM documents WHERE metadata->>'file_id' = $1 ORDER BY (metadata->>'chunk_index')::int ASC NULLS LAST`,
+    [fileId]
+  );
+  return result.rows;
+};

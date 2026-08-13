@@ -11,7 +11,7 @@ import {
   editStatusSchema,
   approveStatusSchema,
 } from '../domain/ingestionSchema.js';
-import { listDocuments, deleteDocument, updateDocumentStatus, getDocumentStatus } from '../../../libraries/db/documents.js';
+import { listDocuments, deleteDocument, updateDocumentStatus, getDocumentStatus, getDocumentById, getChunksByFileId } from '../../../libraries/db/documents.js';
 import { uploadFileToS3 } from '../../../libraries/storage/s3.js';
 import { ingestionQueue } from '../../../libraries/queue/ingestionQueue.js';
 import { pool } from '../../../libraries/db/checkpoint.js';
@@ -140,6 +140,40 @@ router.delete(
     const id = req.params.id as string;
     await deleteDocument(id);
     res.json({ message: 'Document and its vector chunks deleted successfully' });
+  })
+);
+
+router.get(
+  '/files/:id',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const id = req.params.id as string;
+    const doc = await getDocumentById(id);
+    if (!doc) {
+      throw new AppError('NotFound', 404, 'Document not found');
+    }
+    // Enrich with graph state if available (for extracted markdown)
+    let extractedMarkdown = '';
+    if (['pending_review', 'approved', 'done'].includes(doc.status)) {
+      try {
+        const graphConfig = { configurable: { thread_id: id } };
+        const state = await ingestionGraph.getState(graphConfig);
+        if (state && state.values) {
+          extractedMarkdown = state.values.extractedMarkdown || '';
+        }
+      } catch (_) {
+        // graph state may not exist yet — that's fine
+      }
+    }
+    res.json({ ...doc, extractedMarkdown });
+  })
+);
+
+router.get(
+  '/files/:id/chunks',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const id = req.params.id as string;
+    const chunks = await getChunksByFileId(id);
+    res.json(chunks);
   })
 );
 

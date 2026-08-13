@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { FileText, CheckCircle, Edit2, Code, AlignLeft, Copy, TableProperties, UploadCloud, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FileText, CheckCircle, Edit2, Code, AlignLeft, Copy, TableProperties, UploadCloud, Trash2, Eye } from "lucide-react";
 import axios from "axios";
 
 type DocStatus = 'idle' | 'uploading' | 'reviewing' | 'approving';
@@ -22,6 +23,7 @@ export function IngestionDashboard() {
   const [editedMarkdown, setEditedMarkdown] = useState("");
   const [documents, setDocuments] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
   const fetchHistory = async () => {
     try {
@@ -384,6 +386,13 @@ export function IngestionDashboard() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-3">
+                          <button
+                            onClick={() => router.push(`/ingest/${doc.id}`)}
+                            className="text-on-surface-variant hover:text-primary p-1.5 rounded-lg hover:bg-primary/10 transition-colors"
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
                           {(doc.status === 'pending_review' || doc.status === 'pending') && (
                             <button
                               onClick={() => handleResumeReview(doc.id, doc.filename)}
