@@ -7,10 +7,18 @@ export const setupDocumentsTable = async () => {
       filename TEXT NOT NULL,
       status TEXT DEFAULT 'queued',
       s3_key TEXT,
-      uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      extracted_markdown TEXT
     );
   `;
   await pool.query(query);
+
+  // Migration: add column if it doesn't exist
+  try {
+    await pool.query('ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS extracted_markdown TEXT');
+  } catch (err) {
+    console.error('Error adding extracted_markdown column:', err);
+  }
 };
 
 export const listDocuments = async () => {
@@ -85,4 +93,8 @@ export const getChunksByFileId = async (fileId: string): Promise<ChunkResult[]> 
     [fileId]
   );
   return result.rows;
+};
+
+export const updateDocumentMarkdown = async (id: string, markdown: string) => {
+  await pool.query('UPDATE uploaded_files SET extracted_markdown = $1 WHERE id = $2', [markdown, id]);
 };

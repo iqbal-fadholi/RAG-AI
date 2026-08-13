@@ -1,11 +1,11 @@
 import { StateGraph, Annotation } from "@langchain/langgraph";
-import { MemorySaver } from "@langchain/langgraph-checkpoint";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { MarkdownTextSplitter } from "@langchain/textsplitters";
 import { v4 as uuidv4 } from "uuid";
 import { VectorStoreRepository } from "../data-access/vectorStoreRepository.js";
 import { config } from "../../../libraries/config/index.js";
-import { pool } from "../../../libraries/db/checkpoint.js";
-import { updateDocumentStatus } from "../../../libraries/db/documents.js";
+import { pool, getPostgresSaver } from "../../../libraries/db/checkpoint.js";
+import { updateDocumentStatus, updateDocumentMarkdown } from "../../../libraries/db/documents.js";
 
 export const IngestionStateAnnotation = Annotation.Root({
   fileBuffer: Annotation<Buffer>(),
@@ -43,6 +43,10 @@ async function parseDocumentNode(state: IngestionState, configObj?: any): Promis
   }
 
   const data = await response.json();
+  if (thread_id && data.markdown) {
+    await updateDocumentMarkdown(thread_id, data.markdown);
+  }
+
   return {
     extractedMarkdown: data.markdown,
     reviewStatus: "pending",
@@ -105,8 +109,18 @@ const builder = new StateGraph(IngestionStateAnnotation)
   .addConditionalEdges("humanReviewNode", shouldProcess)
   .addEdge("processAndSaveNode", "__end__");
 
-// We use MemorySaver to allow pausing and resuming
-export const checkpointer = new MemorySaver();
+// Initialize database checkpointer tables asynchronously in the background
+(async () => {
+  try {
+    await getPostgresSaver();
+    console.log("Ingestion Database tables initialized successfully.");
+  } catch (err) {
+    console.error("Failed to initialize ingestion database tables:", err);
+  }
+})();
+
+// We use PostgresSaver to allow pausing and resuming across restarts
+export const checkpointer = new PostgresSaver(pool);
 export const ingestionGraph = builder.compile({
   checkpointer,
   interruptBefore: ["humanReviewNode"],

@@ -11,7 +11,7 @@ import {
   editStatusSchema,
   approveStatusSchema,
 } from '../domain/ingestionSchema.js';
-import { listDocuments, deleteDocument, updateDocumentStatus, getDocumentStatus, getDocumentById, getChunksByFileId } from '../../../libraries/db/documents.js';
+import { listDocuments, deleteDocument, updateDocumentStatus, getDocumentStatus, getDocumentById, getChunksByFileId, updateDocumentMarkdown } from '../../../libraries/db/documents.js';
 import { uploadFileToS3 } from '../../../libraries/storage/s3.js';
 import { ingestionQueue } from '../../../libraries/queue/ingestionQueue.js';
 import { pool } from '../../../libraries/db/checkpoint.js';
@@ -66,14 +66,15 @@ router.get(
   asyncWrapper(async (req: Request, res: Response): Promise<void> => {
     const { thread_id } = getStatusSchema.parse(req.params);
     
-    const dbStatus = await getDocumentStatus(thread_id);
-    if (!dbStatus) {
+    const doc = await getDocumentById(thread_id);
+    if (!doc) {
       throw new AppError('NotFound', 404, 'Thread not found');
     }
+    const dbStatus = doc.status;
 
     let reviewStatus = dbStatus;
-    let fileName = '';
-    let extractedMarkdown = '';
+    let fileName = doc.filename || '';
+    let extractedMarkdown = doc.extracted_markdown || '';
     let next: string[] = [];
 
     // If it's reached the graph, try fetching the graph state
@@ -85,8 +86,13 @@ router.get(
         let s = state.values.reviewStatus || dbStatus;
         if (s === 'pending') s = 'pending_review';
         reviewStatus = s;
-        fileName = state.values.fileName || '';
-        extractedMarkdown = state.values.extractedMarkdown || '';
+        fileName = state.values.fileName || fileName;
+        if (!extractedMarkdown) {
+          extractedMarkdown = state.values.extractedMarkdown || '';
+          if (extractedMarkdown) {
+            await updateDocumentMarkdown(thread_id, extractedMarkdown);
+          }
+        }
         next = state.next || [];
       }
     }
@@ -108,6 +114,7 @@ router.post(
 
     const graphConfig = { configurable: { thread_id } };
     await ingestionGraph.updateState(graphConfig, { extractedMarkdown: markdown });
+    await updateDocumentMarkdown(thread_id, markdown);
 
     res.json({ message: 'Markdown updated successfully' });
   })
@@ -152,13 +159,16 @@ router.get(
       throw new AppError('NotFound', 404, 'Document not found');
     }
     // Enrich with graph state if available (for extracted markdown)
-    let extractedMarkdown = '';
-    if (['pending_review', 'approved', 'done'].includes(doc.status)) {
+    let extractedMarkdown = doc.extracted_markdown || '';
+    if (!extractedMarkdown && ['pending_review', 'approved', 'done'].includes(doc.status)) {
       try {
         const graphConfig = { configurable: { thread_id: id } };
         const state = await ingestionGraph.getState(graphConfig);
         if (state && state.values) {
           extractedMarkdown = state.values.extractedMarkdown || '';
+          if (extractedMarkdown) {
+            await updateDocumentMarkdown(id, extractedMarkdown);
+          }
         }
       } catch (_) {
         // graph state may not exist yet — that's fine
