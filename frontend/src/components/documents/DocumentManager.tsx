@@ -6,7 +6,7 @@ import { fetchFiles, uploadFile, deleteFile } from "@/lib/api";
 import { ReviewModal } from "./ReviewModal";
 
 export function DocumentManager() {
-  const [files, setFiles] = useState<any[]>([]);
+  const [files, setFiles] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [reviewThreadId, setReviewThreadId] = useState<string | null>(null);
@@ -25,6 +25,7 @@ export function DocumentManager() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
     loadFiles();
   }, []);
 

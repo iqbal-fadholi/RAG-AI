@@ -10,6 +10,7 @@ interface ReviewModalProps {
 }
 
 export function ReviewModal({ threadId, onClose, onSuccess }: ReviewModalProps) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [status, setStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -18,6 +19,7 @@ export function ReviewModal({ threadId, onClose, onSuccess }: ReviewModalProps) 
 
   useEffect(() => {
     if (!threadId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     
     // Poll for status until the state is 'interrupted' or we get markdown

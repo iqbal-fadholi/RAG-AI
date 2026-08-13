@@ -1,12 +1,23 @@
+import { DocumentData } from "@/types";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
-export async function fetchFiles() {
+export const fetcher = (url: string) => fetch(url).then((res) => {
+  if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+  return res.json();
+});
+
+export async function fetchFiles(): Promise<DocumentData[]> {
   const res = await fetch(`${API_URL}/ingest/files`);
   if (!res.ok) throw new Error("Failed to fetch files");
   return res.json();
 }
 
 export async function uploadFile(file: File) {
+  // Use XMLHttpRequest or axios if progress is strictly needed in native fetch
+  // but since we are refactoring, we'll expose a fetch version, and in components
+  // we might use XMLHttpRequest for progress or an external lib.
+  // Actually, keeping axios for upload progress is better.
   const formData = new FormData();
   formData.append("file", file);
   

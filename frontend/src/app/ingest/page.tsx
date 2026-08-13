@@ -1,4 +1,4 @@
-import { IngestionDashboard } from "@/components/ingestion/IngestionDashboard";
+import { IngestionContainer } from "@/features/ingestion/components/IngestionContainer";
 
 export default function IngestPage() {
   return (
@@ -7,7 +7,7 @@ export default function IngestPage() {
         <h1 className="font-headline-lg text-headline-lg mb-2 text-white">Document Ingestion</h1>
         <p className="font-body-md text-body-md text-on-surface-variant">Upload and review documents before adding them to your knowledge base.</p>
       </header>
-      <IngestionDashboard />
+      <IngestionContainer />
     </main>
   );
 }
