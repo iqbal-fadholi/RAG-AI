@@ -284,15 +284,31 @@ async function generate(state: typeof GraphState.State) {
 
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
 
-  const stream = await chain.stream({
+  const invokeInput = {
     chat_history: chatHistoryStr,
     question: question,
     context: docsContent,
-  });
+  };
 
   let answer = "";
-  for await (const chunk of stream) {
-    answer += chunk;
+
+  try {
+    const stream = await chain.stream(invokeInput);
+    for await (const chunk of stream) {
+      answer += chunk;
+    }
+  } catch (streamError) {
+    console.warn(
+      "Streaming generation failed, retrying with non-streaming invoke:",
+      streamError,
+    );
+    try {
+      answer = await chain.invoke(invokeInput);
+    } catch (invokeError) {
+      console.error("Non-streaming generation also failed:", invokeError);
+      answer =
+        "I'm sorry, I encountered an error generating a response. Please try again.";
+    }
   }
 
   // Append new messages to history
@@ -319,8 +335,13 @@ async function rewrite(state: typeof GraphState.State) {
 
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
 
-  const betterQuestion = await chain.invoke({ question });
-  return { question: betterQuestion, rewriteCount: currentCount + 1 };
+  try {
+    const betterQuestion = await chain.invoke({ question });
+    return { question: betterQuestion, rewriteCount: currentCount + 1 };
+  } catch (error) {
+    console.warn("Rewrite failed, keeping original question:", error);
+    return { question, rewriteCount: currentCount + 1 };
+  }
 }
 
 async function summarizeHistory(state: typeof GraphState.State) {
