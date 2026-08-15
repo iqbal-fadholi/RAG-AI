@@ -12,7 +12,7 @@ import {
   approveStatusSchema,
 } from '../domain/ingestionSchema.js';
 import { listDocuments, deleteDocument, updateDocumentStatus, getDocumentStatus, getDocumentById, getChunksByFileId, updateDocumentMarkdown } from '../../../libraries/db/documents.js';
-import { uploadFileToS3 } from '../../../libraries/storage/s3.js';
+import { uploadFileToS3, getFileFromS3 } from '../../../libraries/storage/s3.js';
 import { ingestionQueue } from '../../../libraries/queue/ingestionQueue.js';
 import { pool } from '../../../libraries/db/checkpoint.js';
 
@@ -184,6 +184,43 @@ router.get(
     const id = req.params.id as string;
     const chunks = await getChunksByFileId(id);
     res.json(chunks);
+  })
+);
+
+router.get(
+  '/files/:id/download',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const id = req.params.id as string;
+    const doc = await getDocumentById(id);
+    if (!doc) {
+      throw new AppError('NotFound', 404, 'Document not found');
+    }
+    if (!doc.s3_key) {
+      throw new AppError('BadRequest', 400, 'No file available for download');
+    }
+
+    const fileBuffer = await getFileFromS3(doc.s3_key);
+    const filename = doc.filename || 'download';
+
+    // Determine content type from filename extension
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      txt: 'text/plain',
+      md: 'text/markdown',
+      csv: 'text/csv',
+      json: 'application/json',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    };
+    const contentType = (ext && mimeTypes[ext]) || 'application/octet-stream';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('Content-Length', fileBuffer.length);
+    res.send(fileBuffer);
   })
 );
 

@@ -1,6 +1,7 @@
-import { Hash, FileText, Tag, Layers, Calendar, Loader2 } from "lucide-react";
+import { Hash, FileText, Tag, Layers, Calendar, Loader2, Download } from "lucide-react";
 import { DocumentDetail, Chunk } from "../hooks/useDocumentDetail";
 import { getStatusBadge } from "./SharedUI";
+import { getDownloadUrl } from "@/lib/api";
 import React from "react";
 
 interface MetadataSidebarProps {
@@ -39,6 +40,11 @@ function MetadataRow({
 }
 
 export function MetadataSidebar({ doc, chunks, loadingDoc, loadingChunks }: MetadataSidebarProps) {
+  const isDownloadable = Boolean(
+    doc?.s3_key &&
+      !["queued", "processing", "extracting text...", "chunking and saving..."].includes(doc.status)
+  );
+
   return (
     <aside className="lg:col-span-3 flex flex-col h-full">
       <div
@@ -97,11 +103,70 @@ export function MetadataSidebar({ doc, chunks, loadingDoc, loadingChunks }: Meta
                   : "N/A"
               }
             />
-            <div className="mt-4 pt-4 border-t border-outline-variant/30">
-              <span className="text-on-surface-variant font-label-md text-[11px] uppercase tracking-wider block mb-2">
-                Status
-              </span>
-              {doc && getStatusBadge(doc.status)}
+            <div className="mt-4 pt-4 border-t border-outline-variant/30 flex flex-col gap-4">
+              <div>
+                <span className="text-on-surface-variant font-label-md text-[11px] uppercase tracking-wider block mb-2">
+                  Status
+                </span>
+                {doc && getStatusBadge(doc.status)}
+              </div>
+
+              {doc && (
+                <div>
+                  <span className="text-on-surface-variant font-label-md text-[11px] uppercase tracking-wider block mb-2">
+                    Actions
+                  </span>
+                  {isDownloadable ? (
+                    <a
+                      href={getDownloadUrl(doc.id)}
+                      download={doc.filename}
+                      className="w-full py-2.5 px-3.5 rounded-xl bg-surface-container-high/80 hover:bg-primary/20 border border-outline-variant/40 hover:border-primary/40 text-on-surface hover:text-primary transition-all duration-200 flex items-center justify-between group shadow-sm backdrop-blur-sm"
+                      title={`Download ${doc.filename}`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                        <div className="p-1.5 rounded-lg bg-surface-variant group-hover:bg-primary/20 transition-colors shrink-0">
+                          <Download className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="flex flex-col min-w-0 text-left">
+                          <span className="font-label-md text-label-md leading-tight text-white group-hover:text-primary transition-colors">
+                            Download Original
+                          </span>
+                          <span
+                            className="font-body-sm text-[11px] text-on-surface-variant truncate max-w-[140px]"
+                            title={doc.filename}
+                          >
+                            {doc.filename}
+                          </span>
+                        </div>
+                      </div>
+                    </a>
+                  ) : (
+                    <button
+                      disabled
+                      className="w-full py-2.5 px-3.5 rounded-xl bg-surface-variant/20 border border-outline-variant/20 text-on-surface-variant/40 flex items-center justify-between cursor-not-allowed opacity-60"
+                      title={
+                        !doc.s3_key
+                          ? "No original file found in storage"
+                          : "File is currently being processed"
+                      }
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                        <div className="p-1.5 rounded-lg bg-surface-variant/40 shrink-0">
+                          <Download className="w-4 h-4 text-on-surface-variant/40" />
+                        </div>
+                        <div className="flex flex-col min-w-0 text-left">
+                          <span className="font-label-md text-label-md leading-tight text-on-surface-variant/40">
+                            Download Original
+                          </span>
+                          <span className="font-body-sm text-[11px] text-on-surface-variant/30 truncate max-w-[140px]">
+                            {doc.filename}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -109,3 +174,4 @@ export function MetadataSidebar({ doc, chunks, loadingDoc, loadingChunks }: Meta
     </aside>
   );
 }
+

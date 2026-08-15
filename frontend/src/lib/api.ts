@@ -63,3 +63,7 @@ export async function deleteFile(id: string) {
   if (!res.ok) throw new Error("Failed to delete file");
   return res.json();
 }
+
+export function getDownloadUrl(id: string): string {
+  return `${API_URL}/ingest/files/${id}/download`;
+}
