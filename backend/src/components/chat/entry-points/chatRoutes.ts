@@ -70,7 +70,14 @@ router.post(
             const finalState = event.data?.output;
             if (finalState && finalState.documents) {
               const usedDocuments = finalState.documents.map((d: any) => d.metadata);
-              res.write(`event: metadata\ndata: ${JSON.stringify({ usedDocuments })}\n\n`);
+              const sources = finalState.documents.map((d: any, idx: number) => ({
+                index: idx + 1,
+                fileId: d.metadata?.file_id || d.metadata?.fileId || null,
+                filename: d.metadata?.filename || d.metadata?.source || `Document ${idx + 1}`,
+                content: d.pageContent,
+                metadata: d.metadata || {},
+              }));
+              res.write(`event: metadata\ndata: ${JSON.stringify({ thread_id, sources, usedDocuments })}\n\n`);
             }
           }
         }

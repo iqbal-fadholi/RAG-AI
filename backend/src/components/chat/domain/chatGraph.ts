@@ -277,7 +277,7 @@ async function generate(state: typeof GraphState.State) {
   // Format context with explicit Document IDs and Sources
   const docsContent = documents
     .map((doc, index) => {
-      const sourceName = doc.metadata?.source || "Unknown Source";
+      const sourceName = doc.metadata?.filename || doc.metadata?.source || "Unknown Source";
       return `--- Document [${index + 1}] (Source: ${sourceName}) ---\n${doc.pageContent}`;
     })
     .join("\n\n");

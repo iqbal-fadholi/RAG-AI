@@ -73,11 +73,21 @@ export function ChatInput() {
             } else if (line.startsWith('data: ')) {
               const dataStr = line.slice(6);
               
-              if (currentEvent === 'thread' || currentEvent === 'metadata') {
-                  try {
-                    const parsed = JSON.parse(dataStr);
-                    if (parsed.thread_id) setThreadId(parsed.thread_id);
-                  } catch {}
+              if (currentEvent === 'thread') {
+                try {
+                  const parsed = JSON.parse(dataStr);
+                  if (parsed.thread_id) setThreadId(parsed.thread_id);
+                } catch {}
+              } else if (currentEvent === 'metadata') {
+                try {
+                  const parsed = JSON.parse(dataStr);
+                  if (parsed.thread_id) setThreadId(parsed.thread_id);
+                  if (parsed.sources && Array.isArray(parsed.sources)) {
+                    setMessages(prev => prev.map(msg => 
+                      msg.id === aiMsgId ? { ...msg, sources: parsed.sources } : msg
+                    ));
+                  }
+                } catch {}
               } 
               else if (currentEvent === 'progress') {
                  try {

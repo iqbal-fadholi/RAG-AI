@@ -16,9 +16,18 @@ export interface ParsedDoc {
 
 export type Role = "user" | "ai";
 
+export interface SourceDocument {
+  index: number;
+  fileId?: string | null;
+  filename: string;
+  content: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ChatMessage {
   id: string;
   role: Role;
   content: string;
   progress?: string;
+  sources?: SourceDocument[];
 }
