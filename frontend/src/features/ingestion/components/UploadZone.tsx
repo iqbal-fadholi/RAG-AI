@@ -3,6 +3,7 @@ import { UploadCloud } from "lucide-react";
 import axios from "axios";
 import { useIngestionStore } from "../store/useIngestionStore";
 import { useDocuments } from "../hooks/useDocuments";
+import { getAuthHeaders } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -23,6 +24,9 @@ export function UploadZone() {
       
       try {
         await axios.post(`${API_URL}/ingest/start`, formData, {
+          headers: {
+            ...getAuthHeaders(),
+          },
           onUploadProgress: (progressEvent) => {
             if (progressEvent.total) {
               const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -35,8 +39,13 @@ export function UploadZone() {
         setUploadProgress(0);
         setFile(null);
         mutate();
-      } catch (error) {
+      } catch (error: any) {
         console.error(error);
+        if (error?.response?.status === 401 && typeof window !== 'undefined') {
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_user');
+          window.location.href = '/login';
+        }
         setStatus('idle');
         setUploadProgress(0);
         setFile(null);

@@ -13,7 +13,7 @@ import {
 import { getVectorStore } from "../../../libraries/db/pgvector.js";
 import { config } from "../../../libraries/config/index.js";
 import { getPostgresSaver, pool } from "../../../libraries/db/checkpoint.js";
-import { keywordSearch } from "../../../libraries/db/documents.js";
+import { keywordSearch, getAccessibleFileIds } from "../../../libraries/db/documents.js";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 
 // 1. Define the State
@@ -35,6 +35,10 @@ export const GraphState = Annotation.Root({
   }),
   messages: Annotation<BaseMessage[]>({
     reducer: (x, y) => x.concat(y),
+    default: () => [],
+  }),
+  allowedTagIds: Annotation<string[]>({
+    reducer: (x, y) => y ?? x,
     default: () => [],
   }),
 });
@@ -117,7 +121,29 @@ async function retrieve(state: typeof GraphState.State) {
   console.log("---HYBRID MULTI-QUERY RETRIEVE---");
 
   const vectorStore = await getVectorStore();
-  const retriever = vectorStore.asRetriever({ k: 10 });
+
+  // OBAC: Get accessible file IDs based on user's allowed tags
+  const { allowedTagIds } = state;
+  let metadataFilter: any = undefined;
+  const isUnrestricted = allowedTagIds.includes('*');
+
+  if (!isUnrestricted) {
+    // Apply OBAC filtering
+    const accessibleFileIds = await getAccessibleFileIds(allowedTagIds);
+    if (accessibleFileIds.length === 0) {
+      console.log("No accessible documents for user's tag set.");
+      return { documents: [] };
+    }
+    metadataFilter = {
+      file_id: { $in: accessibleFileIds },
+    };
+  }
+  // If '*' sentinel is present (admin), no filter is applied
+
+  const retriever = vectorStore.asRetriever({
+    k: 10,
+    ...(metadataFilter ? { filter: metadataFilter } : {}),
+  });
 
   // Use generated queries or fallback to original question
   const queries =
@@ -127,7 +153,10 @@ async function retrieve(state: typeof GraphState.State) {
 
   // Execute both searches concurrently for ALL queries
   const promises = queries.map((q) =>
-    Promise.all([retriever.invoke(q), keywordSearch(q, 10)]),
+    Promise.all([
+      retriever.invoke(q),
+      keywordSearch(q, 10, isUnrestricted ? undefined : allowedTagIds),
+    ])
   );
 
   const results = await Promise.all(promises);

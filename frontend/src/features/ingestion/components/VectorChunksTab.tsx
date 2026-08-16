@@ -89,11 +89,11 @@ export function VectorChunksTab({
                       <ChevronRight className="w-3.5 h-3.5 opacity-50" />
                       Chunk #{chunkIndex}
                     </span>
-                    {chunk.metadata?.filename && (
+                    {chunk.metadata?.filename ? (
                       <span className="text-[11px] text-on-surface-variant/60 bg-surface-variant/40 px-2 py-0.5 rounded-md">
                         {String(chunk.metadata.filename)}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-code-md text-[11px] text-on-surface-variant flex items-center gap-1">

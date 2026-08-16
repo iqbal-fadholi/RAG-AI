@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { Loader2, ArrowUp } from "lucide-react";
 import { useChatStore } from "../store/useChatStore";
 import { ChatMessage } from "@/types";
+import { getAuthHeaders } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -25,12 +26,11 @@ export function ChatInput() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      handleSubmit();
     }
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleSubmit = async () => {
     if (!input.trim() || isStreaming) return;
 
     const question = input.trim();
@@ -47,9 +47,21 @@ export function ChatInput() {
     try {
       const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({ question, ...(threadId ? { thread_id: threadId } : {}) }),
       });
+
+      if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_user');
+          window.location.href = '/login';
+        }
+        throw new Error("Authentication required");
+      }
 
       if (!response.body) throw new Error("No response body");
       

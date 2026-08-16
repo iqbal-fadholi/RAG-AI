@@ -103,8 +103,8 @@ export const highlightNodes = (
   if (Array.isArray(node)) {
     return node.map((child, i) => <span key={i}>{highlightNodes(child, query, caseSensitive, useRegex)}</span>);
   }
-  if (isValidElement(node) && node.props.children) {
-    return cloneElement(node, {}, highlightNodes(node.props.children as ReactNode, query, caseSensitive, useRegex));
+  if (isValidElement<{ children?: ReactNode }>(node) && (node.props as { children?: ReactNode }).children) {
+    return cloneElement(node, {}, highlightNodes((node.props as { children?: ReactNode }).children as ReactNode, query, caseSensitive, useRegex));
   }
   return node;
 };

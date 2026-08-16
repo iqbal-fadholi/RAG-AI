@@ -11,7 +11,7 @@ import {
   editStatusSchema,
   approveStatusSchema,
 } from '../domain/ingestionSchema.js';
-import { listDocuments, deleteDocument, updateDocumentStatus, getDocumentStatus, getDocumentById, getChunksByFileId, updateDocumentMarkdown } from '../../../libraries/db/documents.js';
+import { listDocuments, deleteDocument, updateDocumentStatus, getDocumentStatus, getDocumentById, getChunksByFileId, updateDocumentMarkdown, getOrCreateTags, setDocumentTags, listTags } from '../../../libraries/db/documents.js';
 import { uploadFileToS3, getFileFromS3 } from '../../../libraries/storage/s3.js';
 import { ingestionQueue } from '../../../libraries/queue/ingestionQueue.js';
 import { pool } from '../../../libraries/db/checkpoint.js';
@@ -35,17 +35,35 @@ router.post(
     const { buffer, mimetype, originalname } = req.file;
     console.log(`[API] Processing file: ${originalname} (${mimetype})`);
 
+    // Parse tags from form data (comma-separated string or JSON array)
+    let tagNames: string[] = [];
+    if (req.body.tags) {
+      try {
+        tagNames = JSON.parse(req.body.tags);
+      } catch {
+        tagNames = req.body.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+      }
+    }
+
     // Save to MinIO
     const s3_key = `${thread_id}-${originalname}`;
     console.log(`[API] Uploading to MinIO: ${s3_key}`);
     await uploadFileToS3(s3_key, buffer, mimetype);
 
     console.log(`[API] Saving to Postgres: ${thread_id}`);
-    // Save to Postgres
+    // Save to Postgres with uploaded_by
+    const uploadedBy = req.user?.userId || null;
     await pool.query(
-      `INSERT INTO uploaded_files (id, filename, status, s3_key) VALUES ($1, $2, $3, $4)`,
-      [thread_id, originalname, 'queued', s3_key]
+      `INSERT INTO uploaded_files (id, filename, status, s3_key, uploaded_by) VALUES ($1, $2, $3, $4, $5)`,
+      [thread_id, originalname, 'queued', s3_key, uploadedBy]
     );
+
+    // Handle tags: create new ones if needed, then assign to document
+    if (tagNames.length > 0) {
+      const tags = await getOrCreateTags(tagNames);
+      await setDocumentTags(thread_id, tags.map(t => t.id));
+      console.log(`[API] Assigned tags: ${tags.map(t => t.name).join(', ')}`);
+    }
 
     console.log(`[API] Enqueueing to BullMQ: ${thread_id}`);
     // Enqueue job
@@ -136,8 +154,20 @@ router.post(
 router.get(
   '/files',
   asyncWrapper(async (req: Request, res: Response): Promise<void> => {
-    const files = await listDocuments();
+    // OBAC: filter files by user's allowed tags
+    // Admin role users (with 'admin' page) see all files
+    const isAdmin = req.user?.pages?.includes('admin');
+    const allowedTagIds = isAdmin ? undefined : (req.user?.allowedTagIds || []);
+    const files = await listDocuments(allowedTagIds);
     res.json(files);
+  })
+);
+
+router.get(
+  '/tags',
+  asyncWrapper(async (_req: Request, res: Response): Promise<void> => {
+    const tags = await listTags();
+    res.json(tags);
   })
 );
 

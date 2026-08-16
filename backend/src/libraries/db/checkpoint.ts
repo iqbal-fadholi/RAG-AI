@@ -11,10 +11,24 @@ export const pool = new pg.Pool({
 });
 
 import { setupDocumentsTable } from './documents.js';
+import { setupAuthTables } from './authTables.js';
 
-export const getPostgresSaver = async () => {
-  const checkpointer = new PostgresSaver(pool);
-  await checkpointer.setup(); // Creates the necessary tables if they don't exist
-  await setupDocumentsTable(); // Creates our custom uploaded_files table
-  return checkpointer;
+let setupPromise: Promise<PostgresSaver> | null = null;
+
+export const getPostgresSaver = async (): Promise<PostgresSaver> => {
+  if (!setupPromise) {
+    setupPromise = (async () => {
+      const checkpointer = new PostgresSaver(pool);
+      await checkpointer.setup(); // Creates the necessary tables if they don't exist
+      await setupDocumentsTable(); // Creates our custom uploaded_files table
+      await setupAuthTables(); // Creates auth/RBAC/OBAC tables and seeds data
+      return checkpointer;
+    })().catch((err) => {
+      setupPromise = null; // Reset so retries are possible if failed
+      throw err;
+    });
+  }
+  return setupPromise;
 };
+
+

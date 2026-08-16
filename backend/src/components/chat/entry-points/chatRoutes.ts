@@ -28,7 +28,11 @@ router.post(
     res.write(`event: thread\ndata: ${JSON.stringify({ thread_id })}\n\n`);
 
     console.log(`Starting LangGraph for question: "${question}" in thread: ${thread_id}`);
-    const initialState = { question, documents: [], answer: '', rewriteCount: 0 };
+    // OBAC: pass allowed tag IDs to the graph for retrieval filtering
+    // Admin users get ['*'] sentinel = no filter; other users get their actual tags
+    const isAdmin = req.user?.pages?.includes('admin');
+    const allowedTagIds = isAdmin ? ['*'] : (req.user?.allowedTagIds || []);
+    const initialState = { question, documents: [], answer: '', rewriteCount: 0, allowedTagIds };
     let tokensStreamed = false;
     
     try {

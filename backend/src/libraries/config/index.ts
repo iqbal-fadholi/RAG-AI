@@ -8,6 +8,7 @@ const configSchema = z.object({
   googleApiKey: z.string().min(1, 'GOOGLE_API_KEY is required'),
   googleModel: z.string().default('gemini-3.1-flash-lite'),
   doclingServiceUrl: z.string().default('http://docling-service:8000'),
+  jwtSecret: z.string().default('dev-jwt-secret-change-in-production'),
   db: z.object({
     host: z.string().default('localhost'),
     port: z.coerce.number().default(5432),
@@ -22,6 +23,7 @@ const rawConfig = {
   googleApiKey: process.env.GOOGLE_API_KEY,
   googleModel: process.env.GOOGLE_MODEL,
   doclingServiceUrl: process.env.DOCLING_SERVICE_URL,
+  jwtSecret: process.env.JWT_SECRET,
   db: {
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,

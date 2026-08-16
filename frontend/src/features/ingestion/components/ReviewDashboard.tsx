@@ -64,7 +64,7 @@ export function ReviewDashboard() {
               </li>
               <li className="flex justify-between border-b border-outline-variant/30 pb-2">
                 <span className="text-on-surface-variant">Chunks</span>
-                <span className="font-medium">{parsedDoc.metadata?.chunk_count || 'N/A'}</span>
+                <span className="font-medium">{(parsedDoc.metadata as Record<string, unknown>)?.chunk_count ? String((parsedDoc.metadata as Record<string, unknown>).chunk_count) : 'N/A'}</span>
               </li>
             </ul>
           </div>

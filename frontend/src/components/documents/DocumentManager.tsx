@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef } from "react";
 import { FileText, UploadCloud, Trash2, Loader2, CheckCircle2 } from "lucide-react";
 import { fetchFiles, uploadFile, deleteFile } from "@/lib/api";
+import { DocumentData } from "@/types";
 import { ReviewModal } from "./ReviewModal";
 
 export function DocumentManager() {
-  const [files, setFiles] = useState<unknown[]>([]);
+  const [files, setFiles] = useState<DocumentData[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [reviewThreadId, setReviewThreadId] = useState<string | null>(null);
@@ -16,7 +17,7 @@ export function DocumentManager() {
   const loadFiles = async () => {
     try {
       const data = await fetchFiles();
-      setFiles(data.files || []);
+      setFiles(Array.isArray(data) ? data : (data as { files?: DocumentData[] })?.files || []);
     } catch (err) {
       console.error(err);
     } finally {

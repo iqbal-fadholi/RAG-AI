@@ -5,6 +5,7 @@ Follow these guidelines when building and exposing LangGraph workflows in this w
 ## 1. Graph Compilation and Checkpointing Lifecycle
 - **Compile Once**: Compile the `StateGraph` workflow once at the module level rather than inside HTTP request handlers or dynamically on every request.
 - **Async Setup**: Do not invoke `checkpointer.setup()` or table migrations synchronously inside route handlers. Perform checkpointer database initialization asynchronously in the background at module load (e.g., via an IIFE in the graph file) or during application bootstrap. This prevents connection pool exhaustion and database locks.
+- **Singleton Setup & Advisory Locks**: Memoize the checkpointer initialization function (e.g. `getPostgresSaver()`) using a module-level singleton Promise to prevent concurrent execution across graph modules. Wrap custom table migrations in PostgreSQL advisory locks (`SELECT pg_advisory_lock(...)`) to prevent `pg_type_typname_nsp_index` duplicate key race conditions during parallel module imports or multi-container startup.
 
 ## 2. CLI and LangGraph Studio Compatibility
 - **Export Compiled Instance**: Always export the compiled graph instance directly under the name referenced in `langgraph.json` (e.g., `export const appGraph = workflow.compile(...)`).
@@ -19,3 +20,7 @@ Follow these guidelines when building and exposing LangGraph workflows in this w
 - **Asynchronous Execution**: Any long-running workflow (like document ingestion or complex agentic reasoning) must not block the main Express HTTP thread.
 - **Queueing Strategy**: Push the task to a background queue (e.g., BullMQ backed by Redis).
 - **Status Tracking**: Store granular statuses in the PostgreSQL database so the frontend can poll for progress (e.g., `queued`, `processing...`, `done`), allowing system resilience and UI responsiveness.
+
+## 5. State Annotations & Sentinels
+- **Strict State Typing**: For StateGraph channels that represent filters or permissions (e.g. `allowedTagIds: Annotation<string[]>`), avoid passing `undefined` to denote unrestricted access. Use an explicit sentinel value (e.g. `['*']`) or an empty array `[]` so that LangGraph's state invariant validation passes consistently.
+
