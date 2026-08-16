@@ -10,6 +10,7 @@
 [![PostgreSQL PGVector](https://img.shields.io/badge/PostgreSQL-PGVector-336791?style=flat-square&logo=postgresql)](https://github.com/pgvector/pgvector)
 [![BullMQ](https://img.shields.io/badge/BullMQ-Redis_Queue-CC0000?style=flat-square&logo=redis)](https://bullmq.io/)
 [![MinIO](https://img.shields.io/badge/MinIO-S3_Storage-C72C48?style=flat-square&logo=minio)](https://min.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
 A full-stack, enterprise-grade **Self-Correcting Retrieval-Augmented Generation (RAG)** platform. Built with **LangGraph.js**, **IBM Docling**, **Google Gemini**, **PGVector**, **Next.js 16**, and **Express 5**, this repository provides an autonomous document processing pipeline and conversational AI agent with real-time SSE streaming, zero-shot LLM reranking, human-in-the-loop validation, and dual-layer **RBAC & OBAC** security governance.
 
@@ -553,4 +554,4 @@ graph TD
 
 ## 📜 License
 
-This project is licensed under the [ISC License](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
