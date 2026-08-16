@@ -1,6 +1,7 @@
 "use client";
 
 import { Layers, Tag, FileText, Trash2 } from "lucide-react";
+import { Card, Badge, Button, EmptyState } from "@/components/ui";
 import { Role, TagItem } from "../types";
 
 interface KnowledgeObacTabProps {
@@ -28,15 +29,15 @@ export function KnowledgeObacTab({
       </div>
 
       {/* Roles Tag Matrix */}
-      <div className="glass-panel rounded-[2rem] overflow-hidden shadow-2xl">
-        <div className="px-8 py-6 border-b border-outline-variant bg-surface-container-high/30 flex justify-between items-center">
+      <Card className="shadow-2xl">
+        <Card.Header>
           <h3 className="font-headline-md text-base font-bold text-white flex items-center gap-2">
             <Layers className="w-4 h-4 text-primary" />
             Role-to-Tag Access Mapping
           </h3>
-        </div>
+        </Card.Header>
 
-        <div className="p-6">
+        <Card.Body>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {roles.map((role) => (
               <div
@@ -47,9 +48,7 @@ export function KnowledgeObacTab({
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-bold text-white text-sm capitalize font-headline-md">{role.name}</span>
                     {role.name === "admin" ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-label-md text-[11px]">
-                        Full Access (*)
-                      </span>
+                      <Badge variant="success">Full Access (*)</Badge>
                     ) : (
                       <span className="text-xs text-on-surface-variant font-mono">
                         {role.tags.length} tags
@@ -63,13 +62,9 @@ export function KnowledgeObacTab({
                       </p>
                     ) : role.tags.length > 0 ? (
                       role.tags.map((t) => (
-                        <span
-                          key={t.id}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary font-label-md text-[11px]"
-                        >
-                          <Tag className="w-3 h-3" />
+                        <Badge key={t.id} variant="primary" icon={<Tag className="w-3 h-3" />}>
                           {t.name}
-                        </span>
+                        </Badge>
                       ))
                     ) : (
                       <p className="text-xs text-on-surface-variant/60 italic font-body-sm">
@@ -80,33 +75,37 @@ export function KnowledgeObacTab({
                 </div>
 
                 {role.name !== "admin" && (
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => onOpenTagModal(role)}
-                    className="w-full py-2 px-3 rounded-xl action-button-secondary font-label-md text-xs font-medium text-center transition-colors cursor-pointer"
+                    className="w-full text-center"
                   >
                     Configure Allowed Tags
-                  </button>
+                  </Button>
                 )}
               </div>
             ))}
           </div>
-        </div>
-      </div>
+        </Card.Body>
+      </Card>
 
       {/* All Registered Tags List */}
-      <div className="glass-panel rounded-[2rem] overflow-hidden shadow-2xl">
-        <div className="px-8 py-6 border-b border-outline-variant bg-surface-container-high/30 flex justify-between items-center">
+      <Card className="shadow-2xl">
+        <Card.Header>
           <h3 className="font-headline-md text-base font-bold text-white flex items-center gap-2">
             <Tag className="w-4 h-4 text-primary" />
             All Ingestion Tags ({tags.length})
           </h3>
-        </div>
+        </Card.Header>
 
-        <div className="p-6">
+        <Card.Body>
           {tags.length === 0 ? (
-            <p className="text-xs text-on-surface-variant italic font-body-sm">
-              No tags created yet. Tags are automatically created when documents are uploaded with tags during ingestion.
-            </p>
+            <EmptyState
+              icon={<Tag className="w-8 h-8" />}
+              title="No tags yet"
+              description="Tags are automatically created when documents are uploaded with tags during ingestion."
+            />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {tags.map((t) => (
@@ -124,20 +123,21 @@ export function KnowledgeObacTab({
                       {t.document_count} doc{Number(t.document_count) === 1 ? "" : "s"}
                     </p>
                   </div>
-                  <button
+                  <Button
+                    variant="ghost"
+                    iconOnly
+                    icon={<Trash2 className="w-4 h-4" />}
                     onClick={() => onDeleteTag(t.id, t.name)}
                     disabled={saving}
-                    className="p-1.5 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
                     title="Delete Tag"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                    className="hover:text-red-400 hover:bg-red-500/10"
+                  />
                 </div>
               ))}
             </div>
           )}
-        </div>
-      </div>
+        </Card.Body>
+      </Card>
     </div>
   );
 }

@@ -1,12 +1,14 @@
 "use client";
 
-import { Loader2, AlertCircle, Check } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { Alert } from "@/components/ui";
 import { useAdminData } from "../hooks/useAdminData";
 import { AdminTabs } from "./AdminTabs";
 import { UsersTab } from "./UsersTab";
 import { RolesTab } from "./RolesTab";
 import { KnowledgeObacTab } from "./KnowledgeObacTab";
 import { CreateRoleModal } from "./CreateRoleModal";
+import { CreateUserModal } from "./CreateUserModal";
 import { AssignTagsModal } from "./AssignTagsModal";
 
 export function AdminDashboard() {
@@ -26,10 +28,13 @@ export function AdminDashboard() {
     setSearchQuery,
     showCreateRoleModal,
     setShowCreateRoleModal,
+    showCreateUserModal,
+    setShowCreateUserModal,
     selectedRoleForTags,
     setSelectedRoleForTags,
     handleRoleChange,
     handleDeleteUser,
+    handleCreateUser,
     handleToggleRolePage,
     handleCreateRole,
     handleDeleteRole,
@@ -49,18 +54,8 @@ export function AdminDashboard() {
       />
 
       {/* Notifications */}
-      {error && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 font-body-sm text-body-sm animate-shake">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <p>{error}</p>
-        </div>
-      )}
-      {successMsg && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-body-sm text-body-sm">
-          <Check className="w-5 h-5 flex-shrink-0" />
-          <p>{successMsg}</p>
-        </div>
-      )}
+      {error && <Alert variant="error">{error}</Alert>}
+      {successMsg && <Alert variant="success">{successMsg}</Alert>}
 
       {loading ? (
         <div className="flex flex-col items-center justify-center p-16 space-y-4">
@@ -80,6 +75,7 @@ export function AdminDashboard() {
               onSearchChange={setSearchQuery}
               onRoleChange={handleRoleChange}
               onDeleteUser={handleDeleteUser}
+              onOpenCreateModal={() => setShowCreateUserModal(true)}
             />
           )}
 
@@ -107,6 +103,14 @@ export function AdminDashboard() {
       )}
 
       {/* Modals */}
+      <CreateUserModal
+        isOpen={showCreateUserModal}
+        onClose={() => setShowCreateUserModal(false)}
+        roles={roles}
+        saving={saving}
+        onCreateUser={handleCreateUser}
+      />
+
       <CreateRoleModal
         isOpen={showCreateRoleModal}
         onClose={() => setShowCreateRoleModal(false)}

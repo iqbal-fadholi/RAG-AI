@@ -18,8 +18,10 @@ Follow these guidelines when building and exposing LangGraph workflows in this w
 
 ## 4. Long-Running Workflows
 - **Asynchronous Execution**: Any long-running workflow (like document ingestion or complex agentic reasoning) must not block the main Express HTTP thread.
-- **Queueing Strategy**: Push the task to a background queue (e.g., BullMQ backed by Redis).
-- **Status Tracking**: Store granular statuses in the PostgreSQL database so the frontend can poll for progress (e.g., `queued`, `processing...`, `done`), allowing system resilience and UI responsiveness.
+- **Queueing Strategy**: Push the task to a background queue (e.g., BullMQ backed by Redis) configured with automatic retries and exponential backoff.
+- **Status Tracking & Error Transitions**: Store granular statuses in the PostgreSQL database so the frontend can poll for progress (e.g., `queued`, `processing...`, `done`). Worker jobs and graph handlers must catch unhandled exceptions and explicitly update the database status to `'error'` to prevent documents from remaining stuck in intermediate states (e.g. `'chunking and saving...'`).
+- **Vector Idempotency on Retries**: When re-chunking or retrying vector embeddings for a document, always purge existing vector chunks for that document (`DELETE FROM documents WHERE metadata->>'file_id' = $1`) before saving new chunks into pgvector.
+- **OBAC Tag Governance**: Document tags for Object-Based Access Control (OBAC) should strictly select from pre-registered tags managed by administrators. Untagged documents are public and accessible to all authenticated users.
 
 ## 5. State Annotations & Sentinels
 - **Strict State Typing**: For StateGraph channels that represent filters or permissions (e.g. `allowedTagIds: Annotation<string[]>`), avoid passing `undefined` to denote unrestricted access. Use an explicit sentinel value (e.g. `['*']`) or an empty array `[]` so that LangGraph's state invariant validation passes consistently.

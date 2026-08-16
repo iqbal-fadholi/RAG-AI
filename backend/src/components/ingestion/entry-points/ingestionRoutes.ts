@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
+import { z } from 'zod';
 import { asyncWrapper } from '../../../libraries/error-handling/asyncWrapper.js';
 import { AppError } from '../../../libraries/error-handling/AppError.js';
 import { ingestionGraph } from '../domain/ingestionGraph.js';
@@ -13,7 +14,7 @@ import {
 } from '../domain/ingestionSchema.js';
 import { listDocuments, deleteDocument, updateDocumentStatus, getDocumentStatus, getDocumentById, getChunksByFileId, updateDocumentMarkdown, getOrCreateTags, setDocumentTags, listTags } from '../../../libraries/db/documents.js';
 import { uploadFileToS3, getFileFromS3 } from '../../../libraries/storage/s3.js';
-import { ingestionQueue } from '../../../libraries/queue/ingestionQueue.js';
+import { ingestionQueue, queueChunkAndSave } from '../../../libraries/queue/ingestionQueue.js';
 import { pool } from '../../../libraries/db/checkpoint.js';
 
 const router = Router();
@@ -144,10 +145,78 @@ router.post(
     const { thread_id } = approveStatusSchema.parse(req.params);
     const graphConfig = { configurable: { thread_id } };
 
+    // 1. Mark review approved in LangGraph
     await ingestionGraph.updateState(graphConfig, { reviewStatus: 'approved' }, 'humanReviewNode');
-    await ingestionGraph.invoke(null, graphConfig);
 
-    res.json({ message: 'Document approved and processed' });
+    // 2. Fetch document record & state
+    const doc = await getDocumentById(thread_id);
+    if (!doc) {
+      throw new AppError('NotFound', 404, 'Document not found');
+    }
+
+    let fileName = doc.filename;
+    let extractedMarkdown = doc.extracted_markdown;
+
+    try {
+      const state = await ingestionGraph.getState(graphConfig);
+      if (state?.values) {
+        fileName = (state.values as any).fileName || fileName;
+        extractedMarkdown = (state.values as any).extractedMarkdown || extractedMarkdown;
+      }
+    } catch (e) {
+      console.warn(`[Approve] LangGraph state lookup warning for ${thread_id}, using DB values:`, e);
+    }
+
+    if (!extractedMarkdown) {
+      throw new AppError('BadRequest', 400, 'No extracted markdown found for this document');
+    }
+
+    // 3. Mark status and queue chunk & save in BullMQ worker
+    await updateDocumentStatus(thread_id, 'chunking and saving...');
+    await queueChunkAndSave(thread_id, fileName, extractedMarkdown);
+
+    res.json({ message: 'Document approved and chunking queued' });
+  })
+);
+
+router.post(
+  '/retry/:thread_id',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const { thread_id } = approveStatusSchema.parse(req.params);
+    const doc = await getDocumentById(thread_id);
+    if (!doc) {
+      throw new AppError('NotFound', 404, 'Document not found');
+    }
+
+    const graphConfig = { configurable: { thread_id } };
+    let fileName = doc.filename;
+    let extractedMarkdown = doc.extracted_markdown;
+
+    try {
+      const state = await ingestionGraph.getState(graphConfig);
+      if (state?.values) {
+        fileName = (state.values as any).fileName || fileName;
+        extractedMarkdown = (state.values as any).extractedMarkdown || extractedMarkdown;
+      }
+    } catch (e) {
+      console.warn(`[Retry] LangGraph state lookup warning for ${thread_id}, using DB values.`);
+    }
+
+    if (!extractedMarkdown) {
+      throw new AppError('BadRequest', 400, 'Cannot retry chunking: extracted text is missing.');
+    }
+
+    try {
+      await ingestionGraph.updateState(graphConfig, { reviewStatus: 'approved' }, 'humanReviewNode');
+    } catch (e) {
+      // Ignore if state update fails for older completed sessions
+    }
+
+    // Set status to chunking and enqueue retry
+    await updateDocumentStatus(thread_id, 'chunking and saving...');
+    await queueChunkAndSave(thread_id, fileName, extractedMarkdown);
+
+    res.json({ message: 'Chunking & saving re-queued successfully' });
   })
 );
 
@@ -168,6 +237,27 @@ router.get(
   asyncWrapper(async (_req: Request, res: Response): Promise<void> => {
     const tags = await listTags();
     res.json(tags);
+  })
+);
+
+const updateDocTagsSchema = z.object({
+  tagIds: z.array(z.string().uuid()),
+});
+
+router.put(
+  '/files/:id/tags',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const id = req.params.id as string;
+    const { tagIds } = updateDocTagsSchema.parse(req.body);
+
+    const doc = await getDocumentById(id);
+    if (!doc) {
+      throw new AppError('NotFound', 404, 'Document not found');
+    }
+
+    await setDocumentTags(id, tagIds);
+    const updatedDoc = await getDocumentById(id);
+    res.json({ message: 'Document tags updated successfully', tags: updatedDoc?.tags || [] });
   })
 );
 

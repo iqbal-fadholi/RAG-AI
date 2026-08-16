@@ -1,13 +1,38 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, Trash2, TableProperties, FileText } from "lucide-react";
-import { deleteFile, getIngestionStatus } from "@/lib/api";
+import { Eye, Trash2, TableProperties, FileText, RefreshCw, Tag } from "lucide-react";
+import { deleteFile, getIngestionStatus, retryIngestion, fetchTags, updateDocumentTags } from "@/lib/api";
 import { useIngestionStore } from "../store/useIngestionStore";
 import { useDocuments } from "../hooks/useDocuments";
+import { Card, DataTable, Badge, Button } from "@/components/ui";
+import { DocumentTagsModal } from "./DocumentTagsModal";
+import { DocumentData, TagItem } from "@/types";
 
 export function HistoryTable() {
   const router = useRouter();
   const { documents, mutate } = useDocuments();
   const { setStatus, setFile, setParsedDoc, setEditedMarkdown, parsedDoc } = useIngestionStore();
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  const [availableTags, setAvailableTags] = useState<TagItem[]>([]);
+  const [selectedDocForTags, setSelectedDocForTags] = useState<DocumentData | null>(null);
+  const [savingTags, setSavingTags] = useState(false);
+
+  useEffect(() => {
+    fetchTags().then(setAvailableTags).catch(console.error);
+  }, []);
+
+  const handleSaveDocTags = async (docId: string, tagIds: string[]) => {
+    setSavingTags(true);
+    try {
+      await updateDocumentTags(docId, tagIds);
+      mutate();
+    } finally {
+      setSavingTags(false);
+    }
+  };
 
   const handleDelete = async (docId: string) => {
     if (!confirm("Are you sure you want to delete this document and its associated vector chunks?")) {
@@ -44,6 +69,19 @@ export function HistoryTable() {
     }
   };
 
+  const handleRetry = async (docId: string) => {
+    setRetryingId(docId);
+    try {
+      await retryIngestion(docId);
+      mutate();
+    } catch (error) {
+      console.error('Failed to retry ingestion:', error);
+      alert('Failed to retry ingestion: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setRetryingId(null);
+    }
+  };
+
   const getFileIcon = (filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase();
     if (ext === 'csv' || ext === 'xlsx') return <TableProperties className="w-5 h-5 text-primary/70" />;
@@ -53,131 +91,154 @@ export function HistoryTable() {
   const getStatusBadge = (docStatus: string) => {
     switch (docStatus) {
       case 'queued':
-        return (
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-variant border border-outline-variant text-on-surface font-label-md text-[12px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant/50"></span>
-            Queued
-          </span>
-        );
+        return <Badge variant="default" dot>Queued</Badge>;
       case 'processing':
       case 'extracting text...':
       case 'chunking and saving...':
         return (
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary font-label-md text-[12px] animate-pulse">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+          <Badge variant="primary" dot dotPulse>
             {docStatus.replace(/\.\.\.$/, '').replace(/\b\w/g, l => l.toUpperCase())}
-          </span>
+          </Badge>
         );
       case 'pending_review':
       case 'pending':
-        return (
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 font-label-md text-[12px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
-            Pending Review
-          </span>
-        );
+        return <Badge variant="warning" dot>Pending Review</Badge>;
       case 'approved':
       case 'done':
-        return (
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-label-md text-[12px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            Done
-          </span>
-        );
+        return <Badge variant="success" dot>Done</Badge>;
       case 'error':
-        return (
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 font-label-md text-[12px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-            Error
-          </span>
-        );
+        return <Badge variant="danger" dot>Error</Badge>;
       default:
-        return (
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-variant border border-outline-variant text-on-surface font-label-md text-[12px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant/50"></span>
-            {docStatus}
-          </span>
-        );
+        return <Badge variant="default" dot>{docStatus}</Badge>;
     }
   };
 
   return (
     <section className="w-full mt-8">
-      <div className="glass-panel rounded-[2rem] overflow-hidden shadow-2xl">
-        <div className="px-8 py-6 border-b border-outline-variant bg-surface-container-high/30 flex justify-between items-center">
+      <Card className="shadow-2xl">
+        <Card.Header>
           <h2 className="font-headline-md text-headline-md text-white">Ingested Documents History</h2>
           <div className="flex items-center gap-2">
-             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
              <span className="text-on-surface-variant font-label-md text-label-md">Live Updates</span>
           </div>
-        </div>
-        <div className="overflow-x-auto p-4">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="text-on-surface-variant font-label-md text-label-md border-b border-outline-variant">
-                <th className="px-6 py-4 font-medium">Document Name</th>
-                <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium">Date Added</th>
-                <th className="px-6 py-4 font-medium">Type</th>
-                <th className="px-6 py-4 font-medium text-right">Actions</th>
+        </Card.Header>
+        <Card.Body className="p-4">
+          <DataTable>
+            <DataTable.Head>
+              <tr>
+                <DataTable.Header>Document Name</DataTable.Header>
+                <DataTable.Header>Status</DataTable.Header>
+                <DataTable.Header>Tags (OBAC)</DataTable.Header>
+                <DataTable.Header>Date Added</DataTable.Header>
+                <DataTable.Header>Type</DataTable.Header>
+                <DataTable.Header className="text-right">Actions</DataTable.Header>
               </tr>
-            </thead>
-            <tbody className="text-body-sm text-on-surface">
+            </DataTable.Head>
+            <DataTable.Body>
               {documents.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant">
-                    No uploaded documents found.
-                  </td>
-                </tr>
+                <DataTable.Empty colSpan={6} message="No uploaded documents found." />
               ) : (
                 documents.map((doc) => (
-                  <tr key={doc.id} className="border-b border-outline-variant/30 hover:bg-surface-variant/50 transition-colors">
-                    <td className="px-6 py-4 flex items-center gap-3 font-medium text-white truncate max-w-[250px]" title={doc.filename}>
+                  <DataTable.Row key={doc.id}>
+                    <DataTable.Cell className="flex items-center gap-3 font-medium text-white truncate max-w-[220px]" title={doc.filename}>
                       {getFileIcon(doc.filename)}
                       {doc.filename}
-                    </td>
-                    <td className="px-6 py-4">
+                    </DataTable.Cell>
+                    <DataTable.Cell>
                       {getStatusBadge(doc.status)}
-                    </td>
-                    <td className="px-6 py-4 text-on-surface-variant">
+                    </DataTable.Cell>
+                    <DataTable.Cell>
+                      <div className="flex flex-wrap gap-1.5 max-w-[200px]">
+                        {doc.tags && doc.tags.length > 0 ? (
+                          doc.tags.map((t) => (
+                            <Badge key={t.id} variant="primary" icon={<Tag className="w-3 h-3" />}>
+                              {t.name}
+                            </Badge>
+                          ))
+                        ) : (
+                          <Badge variant="default" className="opacity-60 text-xs">
+                            Public
+                          </Badge>
+                        )}
+                      </div>
+                    </DataTable.Cell>
+                    <DataTable.Cell className="text-on-surface-variant">
                       {new Date(doc.uploaded_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </td>
-                    <td className="px-6 py-4 text-on-surface-variant font-medium">
+                    </DataTable.Cell>
+                    <DataTable.Cell className="text-on-surface-variant font-medium">
                       {doc.filename.split('.').pop()?.toUpperCase() || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        <button
+                    </DataTable.Cell>
+                    <DataTable.Cell className="text-right">
+                      <div className="flex items-center justify-end gap-2.5">
+                        <Button
+                          variant="ghost"
+                          iconOnly
+                          icon={<Tag className="w-4 h-4" />}
+                          onClick={() => setSelectedDocForTags(doc)}
+                          title="Manage OBAC Tags"
+                          className="hover:text-primary hover:bg-primary/10"
+                        />
+                        <Button
+                          variant="ghost"
+                          iconOnly
+                          icon={<Eye className="w-4 h-4" />}
                           onClick={() => router.push(`/ingest/${doc.id}`)}
-                          className="text-on-surface-variant hover:text-primary p-1.5 rounded-lg hover:bg-primary/10 transition-colors"
                           title="View Details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
+                          className="hover:text-primary hover:bg-primary/10"
+                        />
                         {(doc.status === 'pending_review' || doc.status === 'pending') && (
-                          <button
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => handleResumeReview(doc.id, doc.filename)}
-                            className="px-3 py-1 rounded-lg bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 transition-colors font-label-md text-[12px]"
+                            className="bg-primary/20 hover:bg-primary/30 text-primary border-primary/30"
                           >
                             Review
-                          </button>
+                          </Button>
                         )}
-                        <button
+                        {(doc.status === 'error' || doc.status === 'chunking and saving...') && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            loading={retryingId === doc.id}
+                            icon={<RefreshCw className="w-3.5 h-3.5" />}
+                            onClick={() => handleRetry(doc.id)}
+                            className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30 font-medium"
+                            title="Retry chunking and saving to pgvector"
+                          >
+                            Retry
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          iconOnly
+                          icon={<Trash2 className="w-4 h-4" />}
                           onClick={() => handleDelete(doc.id)}
-                          className="text-on-surface-variant hover:text-red-500 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
                           title="Delete Document"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          className="hover:text-red-400 hover:bg-red-500/10"
+                        />
                       </div>
-                    </td>
-                  </tr>
+                    </DataTable.Cell>
+                  </DataTable.Row>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </DataTable.Body>
+          </DataTable>
+        </Card.Body>
+      </Card>
+
+      {/* Document Tags Modal */}
+      <DocumentTagsModal
+        isOpen={!!selectedDocForTags}
+        docId={selectedDocForTags?.id || null}
+        docFilename={selectedDocForTags?.filename || ""}
+        currentTags={selectedDocForTags?.tags || []}
+        availableTags={availableTags}
+        saving={savingTags}
+        onClose={() => setSelectedDocForTags(null)}
+        onSave={handleSaveDocTags}
+      />
     </section>
   );
 }

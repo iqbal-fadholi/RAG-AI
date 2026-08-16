@@ -23,6 +23,7 @@ export function useAdminData() {
 
   // Modals state
   const [showCreateRoleModal, setShowCreateRoleModal] = useState(false);
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
   const [selectedRoleForTags, setSelectedRoleForTags] = useState<Role | null>(null);
 
   const showNotification = (msg: string) => {
@@ -82,6 +83,25 @@ export function useAdminData() {
       await loadData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to delete user");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateUser = async (data: {
+    email: string;
+    password: string;
+    displayName: string;
+    roleId: string;
+  }) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await adminApi.createUser(data);
+      showNotification(`User ${data.displayName} created successfully`);
+      await loadData();
+    } catch (err: unknown) {
+      throw err;
     } finally {
       setSaving(false);
     }
@@ -199,10 +219,13 @@ export function useAdminData() {
     setSearchQuery,
     showCreateRoleModal,
     setShowCreateRoleModal,
+    showCreateUserModal,
+    setShowCreateUserModal,
     selectedRoleForTags,
     setSelectedRoleForTags,
     handleRoleChange,
     handleDeleteUser,
+    handleCreateUser,
     handleToggleRolePage,
     handleCreateRole,
     handleDeleteRole,

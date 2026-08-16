@@ -1,7 +1,10 @@
+"use client";
+
 import { Layers, Loader2, ChevronRight, ChevronDown, Tag } from "lucide-react";
 import { CopyButton } from "./SharedUI";
 import { Chunk } from "../hooks/useDocumentDetail";
 import { highlightChunkText } from "../utils/highlighting";
+import { Card, EmptyState } from "@/components/ui";
 
 interface VectorChunksTabProps {
   chunks: Chunk[];
@@ -27,8 +30,8 @@ export function VectorChunksTab({
   currentMatchIndex,
 }: VectorChunksTabProps) {
   return (
-    <div className="glass-panel rounded-[1.5rem] flex flex-col flex-grow min-h-0 overflow-hidden border border-outline-variant/30">
-      <div className="flex items-center justify-between border-b border-outline-variant/30 px-6 py-4 bg-surface-container-high/30 backdrop-blur-sm shrink-0">
+    <Card variant="flat" className="rounded-2xl flex flex-col flex-grow min-h-0 overflow-hidden">
+      <Card.Header>
         <span className="font-label-md text-label-md text-on-surface-variant flex items-center gap-2">
           <Layers className="w-4 h-4" />
           Vector Chunks
@@ -47,21 +50,22 @@ export function VectorChunksTab({
             Overlap: 200
           </span>
         </div>
-      </div>
+      </Card.Header>
       <div className="flex-grow min-h-0 overflow-y-auto custom-scrollbar p-4 space-y-3">
         {loadingChunks ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-8 h-8 animate-spin text-primary/50" />
           </div>
         ) : filteredChunks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-on-surface-variant">
-            <Layers className="w-10 h-10 opacity-30" />
-            <p className="font-body-sm text-body-sm">
-              {searchQuery
+          <EmptyState
+            icon={<Layers className="w-8 h-8" />}
+            title={searchQuery ? "No matches" : "No chunks found"}
+            description={
+              searchQuery
                 ? "No chunks match your search."
-                : "No chunks found. The document may not be fully processed yet."}
-            </p>
-          </div>
+                : "The document may not be fully processed yet."
+            }
+          />
         ) : (
           filteredChunks.map((chunk, idx) => {
             const chunkIndex =
@@ -80,12 +84,12 @@ export function VectorChunksTab({
                 className={`group bg-surface border rounded-xl p-4 transition-all duration-200 cursor-default ${
                   isMatchedAndActive
                     ? "border-transparent ring-2 ring-primary shadow-lg shadow-primary/10"
-                    : "border-outline-variant/50 hover:border-indigo-500/40"
+                    : "border-outline-variant/40 hover:border-primary/30"
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-label-md text-label-md text-primary group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
+                    <span className="font-label-md text-label-md text-primary group-hover:text-primary transition-colors flex items-center gap-1.5">
                       <ChevronRight className="w-3.5 h-3.5 opacity-50" />
                       Chunk #{chunkIndex}
                     </span>
@@ -133,6 +137,6 @@ export function VectorChunksTab({
           })
         )}
       </div>
-    </div>
+    </Card>
   );
 }

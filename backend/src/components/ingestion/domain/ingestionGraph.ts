@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { VectorStoreRepository } from "../data-access/vectorStoreRepository.js";
 import { config } from "../../../libraries/config/index.js";
 import { pool, getPostgresSaver } from "../../../libraries/db/checkpoint.js";
-import { updateDocumentStatus, updateDocumentMarkdown } from "../../../libraries/db/documents.js";
+import { updateDocumentStatus, updateDocumentMarkdown, deleteDocumentChunks } from "../../../libraries/db/documents.js";
 
 export const IngestionStateAnnotation = Annotation.Root({
   fileBuffer: Annotation<Buffer>(),
@@ -59,35 +59,47 @@ async function humanReviewNode(state: IngestionState): Promise<Partial<Ingestion
   return {};
 }
 
+export async function executeChunkAndSave(thread_id: string, fileName: string, markdown: string): Promise<void> {
+  console.log(`[ChunkAndSave] Starting chunking & saving for ${fileName} (${thread_id})...`);
+  await updateDocumentStatus(thread_id, 'chunking and saving...');
+  
+  try {
+    // 1. Purge any previous/partial chunks to ensure idempotency on retries
+    await deleteDocumentChunks(thread_id);
+
+    // 2. Semantic Chunking: Split by Markdown structure first
+    const textSplitter = new MarkdownTextSplitter({
+      chunkSize: 1500,
+      chunkOverlap: 200,
+    });
+
+    const docs = await textSplitter.createDocuments(
+      [markdown],
+      [{ file_id: thread_id, filename: fileName }]
+    );
+    
+    // 3. Save to pgvector
+    await vectorStoreRepo.addDocuments(docs);
+    
+    await updateDocumentStatus(thread_id, 'done');
+    console.log(`[ChunkAndSave] Documents successfully saved to pgvector for ${thread_id}`);
+  } catch (error) {
+    console.error(`[ChunkAndSave] Failed for ${thread_id}:`, error);
+    await updateDocumentStatus(thread_id, 'error');
+    throw error;
+  }
+}
+
 async function processAndSaveNode(state: IngestionState, configObj?: any): Promise<Partial<IngestionState>> {
   if (state.reviewStatus !== "approved") {
     console.log("Document ingestion was not approved. Skipping save.");
     return {};
   }
 
-  console.log("Document approved. Splitting and saving to pgvector...");
-  
   const thread_id = configObj?.configurable?.thread_id;
   if (!thread_id) throw new Error("thread_id is required");
   
-  await updateDocumentStatus(thread_id, 'chunking and saving...');
-  
-  // Semantic Chunking: Split by Markdown structure (Headers, Paragraphs, Lists) first,
-  // falling back to character limits only if a semantic block is too large.
-  const textSplitter = new MarkdownTextSplitter({
-    chunkSize: 1500,
-    chunkOverlap: 200,
-  });
-
-  const docs = await textSplitter.createDocuments(
-    [state.extractedMarkdown],
-    [{ file_id: thread_id, filename: state.fileName }]
-  );
-  
-  await vectorStoreRepo.addDocuments(docs);
-  
-  await updateDocumentStatus(thread_id, 'done');
-  console.log("Documents successfully saved to pgvector");
+  await executeChunkAndSave(thread_id, state.fileName, state.extractedMarkdown);
 
   return {};
 }

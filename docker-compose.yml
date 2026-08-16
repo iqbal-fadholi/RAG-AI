@@ -1,62 +1,140 @@
 version: '3.8'
+
 services:
   pgvector:
     image: ankane/pgvector:latest
+    container_name: rag_pgvector
+    restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: rag_db
-      POSTGRES_USER: raguser
-      POSTGRES_PASSWORD: ragpassword
+      POSTGRES_DB: ${POSTGRES_DB:-rag_db}
+      POSTGRES_USER: ${POSTGRES_USER:-raguser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ragpassword}
     volumes:
       - pgvector-data:/var/lib/postgresql/data
-
-  node-api:
-    build: ./backend
-    ports:
-      - "3000:3000"
-    env_file:
-      - ./backend/.env
-    depends_on:
-      - pgvector
-      - docling-service
-
-  docling-service:
-    build: ./backend/services/docling-api
-    ports:
-      - "8000:8000"
-    environment:
-      TORCHDYNAMO_DISABLE: 1
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-raguser} -d ${POSTGRES_DB:-rag_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:alpine
+    container_name: rag_redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   minio:
     image: minio/minio
+    container_name: rag_minio
+    restart: unless-stopped
     ports:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
 
   minio-init:
     image: minio/mc
+    container_name: rag_minio_init
     depends_on:
       - minio
     entrypoint: >
       /bin/sh -c "
-      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin};
       /usr/bin/mc mb myminio/documents --ignore-existing;
       /usr/bin/mc anonymous set public myminio/documents;
       exit 0;
       "
 
+  docling-service:
+    build:
+      context: ./backend/services/docling-api
+      dockerfile: Dockerfile
+    container_name: rag_docling
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      TORCHDYNAMO_DISABLE: 1
+
+  node-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rag_backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./backend/.env
+    environment:
+      PORT: 3000
+      DB_HOST: pgvector
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-raguser}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-ragpassword}
+      DB_NAME: ${POSTGRES_DB:-rag_db}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: documents
+      DOCLING_SERVICE_URL: http://docling-service:8000
+    depends_on:
+      pgvector:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      docling-service:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ""
+    container_name: rag_frontend
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    depends_on:
+      - node-api
+
+  nginx:
+    image: nginx:alpine
+    container_name: rag_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - node-api
+
 volumes:
   pgvector-data:
   minio-data:
+  redis-data:

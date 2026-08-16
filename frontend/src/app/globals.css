@@ -26,6 +26,7 @@ body {
 ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
+/* ─── Button base classes (kept for backward compat, prefer <Button> component) ─── */
 .action-button-primary {
     background: linear-gradient(135deg, #7c3aed, #4f46e5);
     box-shadow: 0 8px 24px -4px rgba(124, 58, 237, 0.4);
@@ -47,4 +48,43 @@ body {
     box-shadow: 0 8px 24px -4px rgba(124, 58, 237, 0.4);
     border: 1px solid rgba(255, 255, 255, 0.15);
     color: #ffffff;
+}
+
+/* ─── Keyframe Animations ─── */
+@keyframes scale-in {
+    0% { opacity: 0; transform: scale(0.95); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fade-in {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+@keyframes slide-up {
+    0% { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+}
+
+/* ─── Utility animation classes ─── */
+.animate-scale-in {
+    animation: scale-in 0.2s ease-out;
+}
+
+.animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+}
+
+.animate-slide-up {
+    animation: slide-up 0.25s ease-out;
+}
+
+.animate-shake {
+    animation: shake 0.3s ease-out;
 }

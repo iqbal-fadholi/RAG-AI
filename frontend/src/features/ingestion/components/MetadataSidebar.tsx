@@ -1,7 +1,10 @@
-import { Hash, FileText, Tag, Layers, Calendar, Loader2, Download } from "lucide-react";
+"use client";
+
+import { Hash, FileText, Tag, Layers, Calendar, Loader2, Download, RefreshCw } from "lucide-react";
 import { DocumentDetail, Chunk } from "../hooks/useDocumentDetail";
 import { getStatusBadge } from "./SharedUI";
 import { getDownloadUrl } from "@/lib/api";
+import { Card, Button, Badge } from "@/components/ui";
 import React from "react";
 
 interface MetadataSidebarProps {
@@ -9,6 +12,9 @@ interface MetadataSidebarProps {
   chunks: Chunk[];
   loadingDoc: boolean;
   loadingChunks: boolean;
+  onRetry?: () => void;
+  retrying?: boolean;
+  onManageTags?: () => void;
 }
 
 function MetadataRow({
@@ -39,7 +45,15 @@ function MetadataRow({
   );
 }
 
-export function MetadataSidebar({ doc, chunks, loadingDoc, loadingChunks }: MetadataSidebarProps) {
+export function MetadataSidebar({
+  doc,
+  chunks,
+  loadingDoc,
+  loadingChunks,
+  onRetry,
+  retrying,
+  onManageTags,
+}: MetadataSidebarProps) {
   const isDownloadable = Boolean(
     doc?.s3_key &&
       !["queued", "processing", "extracting text...", "chunking and saving..."].includes(doc.status)
@@ -47,9 +61,9 @@ export function MetadataSidebar({ doc, chunks, loadingDoc, loadingChunks }: Meta
 
   return (
     <aside className="lg:col-span-3 flex flex-col h-full">
-      <div
-        className="glass-panel rounded-[1.5rem] p-6 flex flex-col h-full"
-        style={{ background: "linear-gradient(135deg, rgba(79,70,229,0.08) 0%, rgba(20,20,30,0.4) 100%)" }}
+      <Card
+        variant="elevated"
+        className="p-6 flex flex-col h-full"
       >
         <h2 className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-4">
           Document Details
@@ -103,6 +117,39 @@ export function MetadataSidebar({ doc, chunks, loadingDoc, loadingChunks }: Meta
                   : "N/A"
               }
             />
+
+            {/* OBAC Tags Row */}
+            <div className="py-3 border-b border-outline-variant/30 flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <span className="text-on-surface-variant font-body-sm text-body-sm flex items-center gap-2">
+                  <Tag className="w-3.5 h-3.5" />
+                  OBAC Tags
+                </span>
+                {onManageTags && (
+                  <button
+                    type="button"
+                    onClick={onManageTags}
+                    className="text-xs text-primary hover:text-primary/80 font-label-md transition-colors cursor-pointer"
+                  >
+                    Edit Tags
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {doc?.tags && doc.tags.length > 0 ? (
+                  doc.tags.map((t) => (
+                    <Badge key={t.id} variant="primary" icon={<Tag className="w-3 h-3" />}>
+                      {t.name}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-xs text-on-surface-variant/60 italic font-body-sm">
+                    Public (Untagged)
+                  </span>
+                )}
+              </div>
+            </div>
+
             <div className="mt-4 pt-4 border-t border-outline-variant/30 flex flex-col gap-4">
               <div>
                 <span className="text-on-surface-variant font-label-md text-[11px] uppercase tracking-wider block mb-2">
@@ -112,10 +159,23 @@ export function MetadataSidebar({ doc, chunks, loadingDoc, loadingChunks }: Meta
               </div>
 
               {doc && (
-                <div>
-                  <span className="text-on-surface-variant font-label-md text-[11px] uppercase tracking-wider block mb-2">
+                <div className="flex flex-col gap-3">
+                  <span className="text-on-surface-variant font-label-md text-[11px] uppercase tracking-wider block">
                     Actions
                   </span>
+
+                  {(doc.status === 'error' || doc.status === 'chunking and saving...') && onRetry && (
+                    <Button
+                      variant="secondary"
+                      loading={retrying}
+                      icon={<RefreshCw className="w-4 h-4" />}
+                      onClick={onRetry}
+                      className="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30 font-medium"
+                    >
+                      Retry Processing
+                    </Button>
+                  )}
+
                   {isDownloadable ? (
                     <a
                       href={getDownloadUrl(doc.id)}
@@ -141,9 +201,10 @@ export function MetadataSidebar({ doc, chunks, loadingDoc, loadingChunks }: Meta
                       </div>
                     </a>
                   ) : (
-                    <button
+                    <Button
+                      variant="secondary"
                       disabled
-                      className="w-full py-2.5 px-3.5 rounded-xl bg-surface-variant/20 border border-outline-variant/20 text-on-surface-variant/40 flex items-center justify-between cursor-not-allowed opacity-60"
+                      className="w-full opacity-60"
                       title={
                         !doc.s3_key
                           ? "No original file found in storage"
@@ -163,15 +224,14 @@ export function MetadataSidebar({ doc, chunks, loadingDoc, loadingChunks }: Meta
                           </span>
                         </div>
                       </div>
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
             </div>
           </div>
         )}
-      </div>
+      </Card>
     </aside>
   );
 }
-

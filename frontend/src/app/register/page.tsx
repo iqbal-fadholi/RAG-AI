@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { Database, UserPlus, Eye, EyeOff } from 'lucide-react';
+import { Card, Input, Button, Alert } from '@/components/ui';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -35,7 +36,7 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md animate-slide-up">
         {/* Logo */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-3 mb-3">
@@ -46,53 +47,43 @@ export default function RegisterPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-surface-container rounded-2xl p-8 border border-outline-variant shadow-xl">
+        <Card variant="elevated" className="p-8">
           {success ? (
-            <div className="text-center py-6">
-              <div className="text-green-400 text-xl mb-2">✓</div>
+            <div className="text-center py-6 animate-scale-in">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4">
+                <span className="text-emerald-400 text-2xl">✓</span>
+              </div>
               <p className="text-on-surface font-medium">Account created successfully!</p>
               <p className="text-on-surface-variant text-body-sm mt-1">Redirecting to login...</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
-              {error && (
-                <div className="bg-error-container/20 border border-error/30 text-error rounded-lg px-4 py-3 text-body-sm">
-                  {error}
-                </div>
-              )}
+              {error && <Alert variant="error">{error}</Alert>}
+
+              <Input
+                label="Display Name"
+                id="displayName"
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="John Doe"
+                required
+                inputSize="lg"
+              />
+
+              <Input
+                label="Email"
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                inputSize="lg"
+              />
 
               <div>
-                <label htmlFor="displayName" className="block text-label-md text-on-surface-variant mb-1.5">
-                  Display Name
-                </label>
-                <input
-                  id="displayName"
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="John Doe"
-                  required
-                  className="w-full px-4 py-3 bg-surface-container-high rounded-xl border border-outline-variant text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="email" className="block text-label-md text-on-surface-variant mb-1.5">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                  className="w-full px-4 py-3 bg-surface-container-high rounded-xl border border-outline-variant text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="password" className="block text-label-md text-on-surface-variant mb-1.5">
+                <label htmlFor="password" className="block font-label-md text-xs font-semibold text-on-surface-variant uppercase mb-1.5 tracking-wide">
                   Password
                 </label>
                 <div className="relative">
@@ -104,7 +95,7 @@ export default function RegisterPage() {
                     placeholder="Min 6 characters"
                     required
                     minLength={6}
-                    className="w-full px-4 py-3 bg-surface-container-high rounded-xl border border-outline-variant text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all pr-12"
+                    className="w-full px-4 py-3 bg-surface-container-high/60 rounded-xl border border-outline-variant/40 text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all pr-12 backdrop-blur-sm font-body-sm text-body-sm"
                   />
                   <button
                     type="button"
@@ -116,20 +107,17 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              <button
+              <Button
                 type="submit"
+                variant="primary"
+                size="lg"
                 disabled={isSubmitting}
-                className="w-full py-3 px-4 bg-primary text-on-primary rounded-xl font-label-lg hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                loading={isSubmitting}
+                icon={!isSubmitting ? <UserPlus className="w-5 h-5" /> : undefined}
+                className="w-full"
               >
-                {isSubmitting ? (
-                  <div className="w-5 h-5 border-2 border-on-primary border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <UserPlus className="w-5 h-5" />
-                    Create Account
-                  </>
-                )}
-              </button>
+                Create Account
+              </Button>
 
               <p className="text-on-surface-variant text-body-sm text-center mt-1">
                 New accounts get the <strong className="text-on-surface">viewer</strong> role (chat only).
@@ -148,7 +136,7 @@ export default function RegisterPage() {
               </p>
             </div>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

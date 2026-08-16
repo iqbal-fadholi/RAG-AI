@@ -1,10 +1,16 @@
 export type DocStatus = 'idle' | 'uploading' | 'reviewing' | 'approving' | 'queued' | 'processing' | 'extracting text...' | 'chunking and saving...' | 'pending_review' | 'pending' | 'approved' | 'done' | 'error' | string;
 
+export interface TagItem {
+  id: string;
+  name: string;
+}
+
 export interface DocumentData {
   id: string;
   filename: string;
   status: DocStatus;
   uploaded_at: string;
+  tags?: TagItem[];
   [key: string]: unknown;
 }
 

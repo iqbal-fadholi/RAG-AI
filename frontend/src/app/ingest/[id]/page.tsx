@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Search, ChevronDown, AlignLeft, Layers, AlertCircle } from "lucide-react";
 import { getMatchCount } from "@/features/ingestion/utils/highlighting";
@@ -8,11 +9,23 @@ import { DocumentHeader } from "@/features/ingestion/components/DocumentHeader";
 import { MetadataSidebar } from "@/features/ingestion/components/MetadataSidebar";
 import { ExtractedTextTab } from "@/features/ingestion/components/ExtractedTextTab";
 import { VectorChunksTab } from "@/features/ingestion/components/VectorChunksTab";
+import { DocumentTagsModal } from "@/features/ingestion/components/DocumentTagsModal";
+import { retryIngestion, fetchTags, updateDocumentTags } from "@/lib/api";
+import { TagItem } from "@/types";
 
 export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
   const docId = params.id as string;
+  const [retrying, setRetrying] = useState(false);
+
+  const [availableTags, setAvailableTags] = useState<TagItem[]>([]);
+  const [showTagsModal, setShowTagsModal] = useState(false);
+  const [savingTags, setSavingTags] = useState(false);
+
+  useEffect(() => {
+    fetchTags().then(setAvailableTags).catch(console.error);
+  }, []);
 
   const {
     doc,
@@ -36,7 +49,33 @@ export default function DocumentDetailPage() {
     useRegex,
     setUseRegex,
     scrollToMatch,
+    mutateDoc,
+    mutateChunks,
   } = useDocumentDetail(docId);
+
+  const handleRetry = async () => {
+    if (!docId) return;
+    setRetrying(true);
+    try {
+      await retryIngestion(docId);
+      await Promise.all([mutateDoc?.(), mutateChunks?.()]);
+    } catch (err) {
+      console.error("Failed to retry ingestion:", err);
+      alert("Failed to retry ingestion: " + (err instanceof Error ? err.message : "Unknown error"));
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const handleSaveDocTags = async (id: string, tagIds: string[]) => {
+    setSavingTags(true);
+    try {
+      await updateDocumentTags(id, tagIds);
+      await mutateDoc();
+    } finally {
+      setSavingTags(false);
+    }
+  };
 
   const rawMarkdown = doc?.extractedMarkdown || "";
   const totalMatches = getMatchCount(rawMarkdown, searchQuery, caseSensitive, useRegex);
@@ -102,6 +141,9 @@ export default function DocumentDetailPage() {
           chunks={chunks}
           loadingDoc={loadingDoc}
           loadingChunks={loadingChunks}
+          onRetry={handleRetry}
+          retrying={retrying}
+          onManageTags={() => setShowTagsModal(true)}
         />
 
         <div className="lg:col-span-9 flex flex-col gap-4 h-full min-h-0">
@@ -242,6 +284,18 @@ export default function DocumentDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Document OBAC Tags Modal */}
+      <DocumentTagsModal
+        isOpen={showTagsModal}
+        docId={doc?.id || null}
+        docFilename={doc?.filename || ""}
+        currentTags={doc?.tags || []}
+        availableTags={availableTags}
+        saving={savingTags}
+        onClose={() => setShowTagsModal(false)}
+        onSave={handleSaveDocTags}
+      />
     </main>
   );
 }

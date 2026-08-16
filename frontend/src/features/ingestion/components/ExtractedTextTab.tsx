@@ -1,7 +1,10 @@
+"use client";
+
 import ReactMarkdown from "react-markdown";
 import { AlignLeft, Loader2 } from "lucide-react";
 import { CopyButton } from "./SharedUI";
 import { highlightNodes, highlightRawText } from "../utils/highlighting";
+import { Card, EmptyState } from "@/components/ui";
 
 interface ExtractedTextTabProps {
   rawMarkdown: string;
@@ -27,8 +30,8 @@ export function ExtractedTextTab({
   currentMatchIndex,
 }: ExtractedTextTabProps) {
   return (
-    <div className="glass-panel rounded-[1.5rem] flex flex-col flex-grow min-h-0 overflow-hidden border border-outline-variant/30">
-      <div className="flex items-center justify-between border-b border-outline-variant/30 px-6 py-4 bg-surface-container-high/30 backdrop-blur-sm shrink-0">
+    <Card variant="flat" className="rounded-2xl flex flex-col flex-grow min-h-0 overflow-hidden">
+      <Card.Header>
         <span className="font-label-md text-label-md text-on-surface-variant flex items-center gap-2">
           <AlignLeft className="w-4 h-4" />
           {viewMode === "preview" ? "Markdown Preview" : "Raw Extraction (Markdown)"}
@@ -64,20 +67,18 @@ export function ExtractedTextTab({
           </div>
           <CopyButton text={rawMarkdown} />
         </div>
-      </div>
+      </Card.Header>
       <div className="flex-grow min-h-0 overflow-y-auto custom-scrollbar p-6">
         {loadingDoc ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-8 h-8 animate-spin text-primary/50" />
           </div>
         ) : !rawMarkdown ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-on-surface-variant">
-            <AlignLeft className="w-10 h-10 opacity-30" />
-            <p className="font-body-sm text-body-sm">No extracted text available yet.</p>
-            <p className="font-body-sm text-[12px] opacity-60">
-              The document may still be processing.
-            </p>
-          </div>
+          <EmptyState
+            icon={<AlignLeft className="w-8 h-8" />}
+            title="No extracted text"
+            description="The document may still be processing."
+          />
         ) : viewMode === "preview" ? (
           <div className="bg-black/20 p-6 rounded-xl prose prose-invert max-w-none text-on-surface prose-headings:text-white prose-a:text-indigo-400 prose-strong:text-white prose-code:text-indigo-300 prose-pre:bg-black/30 font-body-sm text-body-sm leading-relaxed">
             <ReactMarkdown
@@ -101,6 +102,6 @@ export function ExtractedTextTab({
           </pre>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

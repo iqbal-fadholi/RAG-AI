@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { Database, LogIn, Eye, EyeOff } from 'lucide-react';
+import { Card, Input, Button, Alert } from '@/components/ui';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -32,7 +33,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md animate-slide-up">
         {/* Logo */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-3 mb-3">
@@ -43,31 +44,23 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-surface-container rounded-2xl p-8 border border-outline-variant shadow-xl">
+        <Card variant="elevated" className="p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
-            {error && (
-              <div className="bg-error-container/20 border border-error/30 text-error rounded-lg px-4 py-3 text-body-sm">
-                {error}
-              </div>
-            )}
+            {error && <Alert variant="error">{error}</Alert>}
+
+            <Input
+              label="Email"
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              inputSize="lg"
+            />
 
             <div>
-              <label htmlFor="email" className="block text-label-md text-on-surface-variant mb-1.5">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                className="w-full px-4 py-3 bg-surface-container-high rounded-xl border border-outline-variant text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-label-md text-on-surface-variant mb-1.5">
+              <label htmlFor="password" className="block font-label-md text-xs font-semibold text-on-surface-variant uppercase mb-1.5 tracking-wide">
                 Password
               </label>
               <div className="relative">
@@ -78,7 +71,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full px-4 py-3 bg-surface-container-high rounded-xl border border-outline-variant text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all pr-12"
+                  className="w-full px-4 py-3 bg-surface-container-high/60 rounded-xl border border-outline-variant/40 text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all pr-12 backdrop-blur-sm font-body-sm text-body-sm"
                 />
                 <button
                   type="button"
@@ -90,20 +83,17 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <button
+            <Button
               type="submit"
+              variant="primary"
+              size="lg"
               disabled={isSubmitting}
-              className="w-full py-3 px-4 bg-primary text-on-primary rounded-xl font-label-lg hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              loading={isSubmitting}
+              icon={!isSubmitting ? <LogIn className="w-5 h-5" /> : undefined}
+              className="w-full"
             >
-              {isSubmitting ? (
-                <div className="w-5 h-5 border-2 border-on-primary border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <LogIn className="w-5 h-5" />
-                  Sign In
-                </>
-              )}
-            </button>
+              Sign In
+            </Button>
           </form>
 
           <div className="mt-6 text-center">
@@ -114,7 +104,7 @@ export default function LoginPage() {
               </Link>
             </p>
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   );

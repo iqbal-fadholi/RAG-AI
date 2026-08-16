@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 import { asyncWrapper } from '../../../libraries/error-handling/asyncWrapper.js';
 import { AppError } from '../../../libraries/error-handling/AppError.js';
 import { pool } from '../../../libraries/db/checkpoint.js';
@@ -210,6 +211,49 @@ router.get(
        ORDER BY u.created_at ASC`
     );
     res.json(result.rows);
+  })
+);
+
+const createUserSchema = z.object({
+  email: z.string().email('Valid email address is required'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  displayName: z.string().min(1, 'Display name is required'),
+  roleId: z.string().uuid('Valid role ID is required'),
+});
+
+router.post(
+  '/users',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const { email, password, displayName, roleId } = createUserSchema.parse(req.body);
+
+    // Verify role exists
+    const roleCheck = await pool.query('SELECT id, name FROM roles WHERE id = $1', [roleId]);
+    if (roleCheck.rows.length === 0) {
+      throw new AppError('NotFound', 404, 'Role not found');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    try {
+      const result = await pool.query(
+        `INSERT INTO users (email, password_hash, display_name, role_id)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, email, display_name, role_id, created_at`,
+        [email.toLowerCase().trim(), passwordHash, displayName.trim(), roleId]
+      );
+
+      const newUser = {
+        ...result.rows[0],
+        role_name: roleCheck.rows[0].name,
+      };
+
+      res.status(201).json(newUser);
+    } catch (error: any) {
+      if (error.code === '23505') {
+        throw new AppError('Conflict', 409, 'User with this email already exists');
+      }
+      throw error;
+    }
   })
 );
 

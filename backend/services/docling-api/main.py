@@ -7,6 +7,10 @@ from docling.document_converter import DocumentConverter
 app = FastAPI(title="Docling API Service")
 converter = DocumentConverter()
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 @app.post("/parse")
 async def parse_document(file: UploadFile = File(...)):
     # Save uploaded file to a temporary location

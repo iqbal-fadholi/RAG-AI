@@ -5,6 +5,7 @@ import { FileText, UploadCloud, Trash2, Loader2, CheckCircle2 } from "lucide-rea
 import { fetchFiles, uploadFile, deleteFile } from "@/lib/api";
 import { DocumentData } from "@/types";
 import { ReviewModal } from "./ReviewModal";
+import { Card, Button, Badge, EmptyState } from "@/components/ui";
 
 export function DocumentManager() {
   const [files, setFiles] = useState<DocumentData[]>([]);
@@ -70,10 +71,10 @@ export function DocumentManager() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-3 px-1">Upload Knowledge</h2>
+        <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3 px-1">Upload Knowledge</h2>
         <div 
           onClick={() => !uploading && fileInputRef.current?.click()}
-          className={`border-2 border-dashed border-neutral-800/80 rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all cursor-pointer group ${uploading ? 'opacity-50 pointer-events-none' : 'hover:bg-neutral-900/50 hover:border-indigo-500/30'}`}
+          className={`border-2 border-dashed border-outline-variant/40 rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all cursor-pointer group ${uploading ? 'opacity-50 pointer-events-none' : 'hover:bg-surface-variant/20 hover:border-primary/30'}`}
         >
           <input 
             type="file" 
@@ -82,49 +83,56 @@ export function DocumentManager() {
             onChange={handleFileChange}
             accept=".pdf,.txt,.md"
           />
-          <div className="w-12 h-12 rounded-full bg-neutral-900 flex items-center justify-center mb-3 group-hover:-translate-y-1 transition-transform shadow-inner border border-neutral-800">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/10 to-surface-variant/40 border border-outline-variant/30 flex items-center justify-center mb-3 group-hover:-translate-y-1 transition-transform">
             {uploading ? (
-              <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
+              <Loader2 className="w-5 h-5 text-primary animate-spin" />
             ) : (
-              <UploadCloud className="w-5 h-5 text-indigo-400" />
+              <UploadCloud className="w-5 h-5 text-primary" />
             )}
           </div>
-          <p className="text-sm font-medium text-neutral-200">
+          <p className="text-sm font-medium text-on-surface">
             {uploading ? "Uploading..." : "Click to upload"}
           </p>
-          <p className="text-xs text-neutral-500 mt-1">PDF or Text files</p>
+          <p className="text-xs text-on-surface-variant mt-1">PDF or Text files</p>
         </div>
       </div>
 
       <div>
-        <h2 className="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-3 px-1 flex justify-between items-center">
+        <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3 px-1 flex justify-between items-center">
           Your Documents
-          {loading && <Loader2 className="w-3 h-3 animate-spin text-neutral-400" />}
+          {loading && <Loader2 className="w-3 h-3 animate-spin text-on-surface-variant" />}
         </h2>
         <div className="space-y-2">
           {files.length === 0 && !loading && (
-            <div className="p-4 rounded-xl border border-neutral-800/50 bg-neutral-900/20 text-center">
-              <p className="text-sm text-neutral-500">No documents found.</p>
-            </div>
+            <Card variant="flat" className="p-4 text-center">
+              <EmptyState
+                icon={<FileText className="w-6 h-6" />}
+                description="No documents found."
+                className="py-6"
+              />
+            </Card>
           )}
           {files.map(file => (
-            <div key={file.id} className="p-3 rounded-xl bg-neutral-900/50 border border-neutral-800/50 flex items-center gap-3 hover:border-indigo-500/30 hover:bg-neutral-900 transition-all cursor-default group shadow-sm">
-              <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+            <div key={file.id} className="p-3 rounded-xl bg-surface-container-high/40 border border-outline-variant/30 flex items-center gap-3 hover:border-primary/30 hover:bg-surface-variant/30 transition-all cursor-default group shadow-sm">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary">
                 <FileText className="w-4 h-4" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate text-neutral-200">{file.filename}</p>
-                <p className="text-xs text-green-500/80 flex items-center gap-1 mt-0.5">
-                  <CheckCircle2 className="w-3 h-3" /> Ingested
+                <p className="text-sm font-medium truncate text-on-surface">{file.filename}</p>
+                <p className="text-xs flex items-center gap-1 mt-0.5">
+                  <Badge variant="success" className="text-[10px]">
+                    <CheckCircle2 className="w-3 h-3" /> Ingested
+                  </Badge>
                 </p>
               </div>
-              <button 
+              <Button
+                variant="ghost"
+                iconOnly
+                icon={<Trash2 className="w-4 h-4" />}
                 onClick={(e) => handleDelete(file.id, e)}
-                className="p-2 text-neutral-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                className="opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10"
                 title="Delete Document"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              />
             </div>
           ))}
         </div>

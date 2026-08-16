@@ -1,3 +1,5 @@
+"use client";
+
 import useSWR from "swr";
 import { useState, useCallback, useEffect } from "react";
 import { fetcher } from "@/lib/api";
@@ -10,6 +12,7 @@ export interface DocumentDetail {
   s3_key: string;
   uploaded_at: string;
   extractedMarkdown: string;
+  tags?: { id: string; name: string }[];
 }
 
 export interface Chunk {
@@ -21,12 +24,12 @@ export interface Chunk {
 export type ActiveTab = "extracted-text" | "vector-chunks";
 
 export function useDocumentDetail(docId: string) {
-  const { data: doc, error: docError, isLoading: loadingDoc } = useSWR<DocumentDetail>(
+  const { data: doc, error: docError, isLoading: loadingDoc, mutate: mutateDoc } = useSWR<DocumentDetail>(
     docId ? `/ingest/files/${docId}` : null,
     fetcher
   );
 
-  const { data: chunksData, error: chunksError, isLoading: loadingChunks } = useSWR<Chunk[]>(
+  const { data: chunksData, error: chunksError, isLoading: loadingChunks, mutate: mutateChunks } = useSWR<Chunk[]>(
     docId ? `/ingest/files/${docId}/chunks` : null,
     fetcher
   );
@@ -103,5 +106,7 @@ export function useDocumentDetail(docId: string) {
     useRegex,
     setUseRegex,
     scrollToMatch,
+    mutateDoc,
+    mutateChunks,
   };
 }

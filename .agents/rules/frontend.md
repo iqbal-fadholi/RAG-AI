@@ -8,8 +8,9 @@ When developing or refactoring the Next.js frontend application, always adhere t
 4. **Separation of Concerns (Thin Wrappers)**: Page components (`src/app/**/page.tsx`) must act strictly as thin orchestrators. They should compose smaller feature components and pass down state, rather than containing massive UI trees.
 5. **Logic Extraction**: Pure, non-React logic (e.g., complex regex, data transformations, math) must be extracted into `src/features/<feature>/utils/` to keep components clean and testable.
 6. **Component Granularity**: Large monolithic UI files must be aggressively broken down into logical sub-components within `src/features/<feature>/components/`. If a component handles multiple distinct visual areas (e.g., a Sidebar and Tabs), split them up.
+7. **Client Component Directives (`"use client"`)**: Every component, custom hook (`use*`), or store consumer that imports or uses React client hooks (`useState`, `useEffect`, `useCallback`, `useRef`), Next.js client navigation (`useRouter`, `useParams`, `usePathname`), or client data-fetching (`useSWR`) MUST include the `"use client";` directive at line 1.
 
-## 7. Design System & Coloring Strategy
+## 8. Design System & Coloring Strategy
 
 Always maintain consistent visual styling and color hierarchy across all pages (matching `/ingest` and `/admin`):
 

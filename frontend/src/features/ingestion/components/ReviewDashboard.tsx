@@ -1,7 +1,10 @@
+"use client";
+
 import { FileText, CheckCircle, Edit2, Code, AlignLeft, Copy } from "lucide-react";
 import { useIngestionStore } from "../store/useIngestionStore";
 import { editMarkdown, approveIngestion } from "@/lib/api";
 import { useDocuments } from "../hooks/useDocuments";
+import { Card, Button, Badge } from "@/components/ui";
 
 export function ReviewDashboard() {
   const { status, setStatus, file, parsedDoc, editedMarkdown, setEditedMarkdown, setFile, setParsedDoc } = useIngestionStore();
@@ -39,7 +42,7 @@ export function ReviewDashboard() {
     <section className="w-full flex flex-col lg:flex-row gap-8 h-[600px]">
       {/* Left Side: File Details */}
       <div className="w-full lg:w-[30%] flex flex-col gap-md">
-        <div className="glass-panel rounded-[2rem] p-8 flex flex-col h-full shadow-2xl">
+        <Card variant="elevated" className="p-8 flex flex-col h-full shadow-2xl">
           <h2 className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-6">File Details</h2>
           <div className="flex items-center gap-4 mb-6 pb-6 border-b border-outline-variant">
             <FileText className="text-primary w-8 h-8 shrink-0" />
@@ -49,10 +52,9 @@ export function ReviewDashboard() {
             </div>
           </div>
           <div className="mb-8">
-            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-variant text-on-surface-variant font-label-md text-[12px] border border-outline-variant">
-              <span className="w-2 h-2 rounded-full bg-secondary"></span>
+            <Badge variant="default" dot dotColor="bg-secondary">
               Pending Review
-            </span>
+            </Badge>
           </div>
           
           <div className="flex-grow">
@@ -70,34 +72,37 @@ export function ReviewDashboard() {
           </div>
 
           <div className="mt-auto pt-6 border-t border-outline-variant flex flex-col gap-4">
-            <button 
+            <Button
+              variant="ghost"
+              className="w-full border border-outline-variant"
               onClick={() => setStatus('idle')}
-              className="w-full py-3 px-4 rounded-xl border border-outline-variant font-label-md text-label-md transition-colors flex justify-center items-center gap-2 hover:bg-surface-variant text-on-surface-variant"
             >
               Close Review
-            </button>
-            <button 
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<Edit2 className="w-4 h-4" />}
               onClick={handleSaveEdits}
               disabled={status === 'approving'}
-              className="w-full py-3 px-4 rounded-xl action-button-secondary font-label-md text-label-md transition-colors flex justify-center items-center gap-2 disabled:opacity-50"
+              className="w-full"
             >
-              <Edit2 className="w-4 h-4" />
               Save Edits
-            </button>
-            <button 
+            </Button>
+            <Button
+              variant="primary"
+              icon={<CheckCircle className="w-4 h-4" />}
               onClick={handleApprove}
-              disabled={status === 'approving'}
-              className="w-full py-3 px-4 rounded-xl action-button-primary font-label-md text-label-md transition-opacity hover:opacity-90 flex justify-center items-center gap-2 disabled:opacity-50"
+              loading={status === 'approving'}
+              className="w-full"
             >
-              {status === 'approving' ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <CheckCircle className="w-4 h-4" />}
               Approve & Process
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Right Side: Markdown Editor */}
-      <div className="w-full lg:w-[70%] glass-panel rounded-[2rem] flex flex-col overflow-hidden shadow-2xl border border-outline-variant">
+      <div className="w-full lg:w-[70%] glass-panel rounded-2xl flex flex-col overflow-hidden shadow-2xl border border-outline-variant">
         <div className="bg-surface-container-high/50 border-b border-outline-variant px-6 py-4 flex justify-between items-center backdrop-blur-md">
           <span className="font-label-md text-label-md text-on-surface-variant flex items-center gap-2">
             <Code className="w-4 h-4" />

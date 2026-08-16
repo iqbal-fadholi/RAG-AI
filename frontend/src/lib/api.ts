@@ -85,6 +85,15 @@ export async function approveIngestion(threadId: string) {
   return res.json();
 }
 
+export async function retryIngestion(threadId: string) {
+  const res = await fetch(`${API_URL}/ingest/retry/${threadId}`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+  });
+  if (!res.ok) throw new Error("Failed to retry ingestion");
+  return res.json();
+}
+
 export async function deleteFile(id: string) {
   const res = await fetch(`${API_URL}/ingest/files/${id}`, {
     method: "DELETE",
@@ -104,6 +113,19 @@ export async function fetchTags(): Promise<{ id: string; name: string }[]> {
     headers: { ...getAuthHeaders() },
   });
   if (!res.ok) throw new Error("Failed to fetch tags");
+  return res.json();
+}
+
+export async function updateDocumentTags(id: string, tagIds: string[]) {
+  const res = await fetch(`${API_URL}/ingest/files/${id}/tags`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ tagIds }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || err.message || "Failed to update document tags");
+  }
   return res.json();
 }
 
@@ -166,6 +188,19 @@ export const adminApi = {
   async getUsers() {
     const res = await fetch(`${API_URL}/admin/users`, { headers: { ...getAuthHeaders() } });
     if (!res.ok) throw new Error("Failed to fetch users");
+    return res.json();
+  },
+
+  async createUser(data: { email: string; password: string; displayName: string; roleId: string }) {
+    const res = await fetch(`${API_URL}/admin/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || err.message || "Failed to create user");
+    }
     return res.json();
   },
 

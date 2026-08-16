@@ -76,6 +76,10 @@ export const deleteDocument = async (id: string) => {
   }
 };
 
+export const deleteDocumentChunks = async (fileId: string) => {
+  await pool.query("DELETE FROM documents WHERE metadata->>'file_id' = $1", [fileId]);
+};
+
 export interface KeywordSearchResult {
   id: string;
   page_content: string;
@@ -134,7 +138,16 @@ export const getDocumentStatus = async (id: string): Promise<string | null> => {
 };
 
 export const getDocumentById = async (id: string) => {
-  const result = await pool.query('SELECT * FROM uploaded_files WHERE id = $1', [id]);
+  const result = await pool.query(`
+    SELECT uf.*, COALESCE(
+      json_agg(json_build_object('id', t.id, 'name', t.name)) FILTER (WHERE t.id IS NOT NULL), '[]'
+    ) as tags
+    FROM uploaded_files uf
+    LEFT JOIN document_tags dt ON uf.id = dt.document_id
+    LEFT JOIN tags t ON dt.tag_id = t.id
+    WHERE uf.id = $1
+    GROUP BY uf.id
+  `, [id]);
   return result.rows[0] || null;
 };
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { ShieldCheck, Plus, Lock, Trash2, Tag } from "lucide-react";
+import { Card, Badge, Button } from "@/components/ui";
 import { Role, AVAILABLE_PAGES } from "../types";
 
 interface RolesTabProps {
@@ -30,21 +31,22 @@ export function RolesTab({
             Control page-level RBAC routing access for each role.
           </p>
         </div>
-        <button
+        <Button
+          variant="primary"
+          icon={<Plus className="w-4 h-4" />}
           onClick={onOpenCreateModal}
-          className="action-button-primary flex items-center gap-2 px-6 py-2 rounded-xl font-label-md text-label-md transition-opacity hover:opacity-90 cursor-pointer active:scale-95 shadow-md"
+          className="shadow-md"
         >
-          <Plus className="w-4 h-4" />
           Create Role
-        </button>
+        </Button>
       </div>
 
       {/* Roles Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {roles.map((role) => (
-          <div
+          <Card
             key={role.id}
-            className="glass-panel rounded-[2rem] p-6 flex flex-col justify-between space-y-6 hover:border-primary/30 transition-all shadow-xl"
+            className="p-6 flex flex-col justify-between space-y-6 hover:border-primary/30 transition-all shadow-xl"
           >
             <div>
               <div className="flex items-center justify-between gap-3 mb-2">
@@ -56,18 +58,17 @@ export function RolesTab({
                 </div>
                 <div className="flex items-center gap-2">
                   {role.is_system ? (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 font-label-md text-[11px]">
-                      <Lock className="w-3 h-3" /> System
-                    </span>
+                    <Badge variant="warning" icon={<Lock className="w-3 h-3" />}>System</Badge>
                   ) : (
-                    <button
+                    <Button
+                      variant="ghost"
+                      iconOnly
+                      icon={<Trash2 className="w-4 h-4" />}
                       onClick={() => onDeleteRole(role.id, role.name)}
                       disabled={saving}
-                      className="p-1.5 rounded-lg text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
                       title="Delete Role"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      className="hover:text-red-400 hover:bg-red-500/10"
+                    />
                   )}
                 </div>
               </div>
@@ -87,7 +88,7 @@ export function RolesTab({
                     return (
                       <label
                         key={page.id}
-                        className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                        className={`flex items-center justify-between p-3 rounded-xl border transition-all duration-200 cursor-pointer ${
                           isAllowed
                             ? "bg-surface-variant border-outline-variant/60 text-white"
                             : "bg-surface-container-high/40 border-outline-variant/30 text-on-surface-variant hover:border-outline-variant/60"
@@ -119,12 +120,12 @@ export function RolesTab({
               </div>
               <button
                 onClick={() => onOpenTagModal(role)}
-                className="font-label-md text-xs text-primary hover:text-primary/80 font-medium hover:underline flex items-center gap-1 cursor-pointer"
+                className="font-label-md text-xs text-primary hover:text-primary/80 font-medium hover:underline flex items-center gap-1 cursor-pointer transition-colors"
               >
                 Edit Tag Access &rarr;
               </button>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
     </div>

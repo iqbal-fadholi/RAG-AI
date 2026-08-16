@@ -13,6 +13,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Health check route
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
 // Public routes (no auth required)
 app.use('/auth', authRoutes);
 

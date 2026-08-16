@@ -1,3 +1,5 @@
+"use client";
+
 import { ArrowLeft, Calendar } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getStatusBadge } from "./SharedUI";

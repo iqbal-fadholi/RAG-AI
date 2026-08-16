@@ -1,54 +1,31 @@
+"use client";
+
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
+import { Badge } from "@/components/ui";
 
 export function getStatusBadge(status: string) {
   switch (status) {
     case "queued":
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-variant border border-outline-variant text-on-surface font-label-md text-[12px]">
-          <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant/50" />
-          Queued
-        </span>
-      );
+      return <Badge variant="default" dot>Queued</Badge>;
     case "processing":
     case "extracting text...":
     case "chunking and saving...":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary font-label-md text-[12px] animate-pulse">
-          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+        <Badge variant="primary" dot dotPulse>
           {status.replace(/\.\.\.$/, "").replace(/\b\w/g, (l) => l.toUpperCase())}
-        </span>
+        </Badge>
       );
     case "pending_review":
     case "pending":
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 font-label-md text-[12px]">
-          <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-          Pending Review
-        </span>
-      );
+      return <Badge variant="warning" dot>Pending Review</Badge>;
     case "approved":
     case "done":
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-label-md text-[12px]">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          Processed
-        </span>
-      );
+      return <Badge variant="success" dot>Processed</Badge>;
     case "error":
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 font-label-md text-[12px]">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-          Error
-        </span>
-      );
+      return <Badge variant="danger" dot>Error</Badge>;
     default:
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-variant border border-outline-variant text-on-surface font-label-md text-[12px]">
-          <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant/50" />
-          {status}
-        </span>
-      );
+      return <Badge variant="default" dot>{status}</Badge>;
   }
 }
 
