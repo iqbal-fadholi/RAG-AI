@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { TopNavBar } from "@/components/layout/TopNavBar";
+import { AnimatedBackground } from "@/components/layout/AnimatedBackground";
 import { AuthGuard } from "@/features/auth/components/AuthGuard";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -27,6 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${jakarta.variable} ${jetbrains.variable}`}>
       <body className="antialiased min-h-screen flex flex-col font-body-md text-on-surface">
+        <AnimatedBackground />
         <AuthGuard>
           <TopNavBar />
           {children}

@@ -3,13 +3,13 @@
 @tailwind utilities;
 
 body {
-    background: radial-gradient(circle at top left, #231b42, #0d0a14 60%);
-    background-attachment: fixed;
+    background-color: #090710;
     color: #e5e1e4;
     margin: 0;
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    position: relative;
 }
 
 .surface-card, .glass-panel {
@@ -72,6 +72,55 @@ body {
     75% { transform: translateX(4px); }
 }
 
+/* Ambient Floating Gradient Orbs */
+@keyframes orb-float-1 {
+    0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    33% {
+        transform: translate3d(70px, 50px, 0) scale(1.12);
+    }
+    66% {
+        transform: translate3d(-50px, 90px, 0) scale(0.92);
+    }
+}
+
+@keyframes orb-float-2 {
+    0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    33% {
+        transform: translate3d(-90px, 70px, 0) scale(1.08);
+    }
+    66% {
+        transform: translate3d(-30px, -50px, 0) scale(0.95);
+    }
+}
+
+@keyframes orb-float-3 {
+    0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    33% {
+        transform: translate3d(60px, -80px, 0) scale(1.15);
+    }
+    66% {
+        transform: translate3d(110px, -20px, 0) scale(0.9);
+    }
+}
+
+@keyframes orb-float-4 {
+    0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    33% {
+        transform: translate3d(-70px, -60px, 0) scale(1.1);
+    }
+    66% {
+        transform: translate3d(50px, -40px, 0) scale(0.94);
+    }
+}
+
 /* ─── Utility animation classes ─── */
 .animate-scale-in {
     animation: scale-in 0.2s ease-out;
@@ -87,4 +136,33 @@ body {
 
 .animate-shake {
     animation: shake 0.3s ease-out;
+}
+
+.animate-orb-1 {
+    animation: orb-float-1 20s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    will-change: transform;
+}
+
+.animate-orb-2 {
+    animation: orb-float-2 25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    will-change: transform;
+}
+
+.animate-orb-3 {
+    animation: orb-float-3 22s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    will-change: transform;
+}
+
+.animate-orb-4 {
+    animation: orb-float-4 28s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-orb-1,
+    .animate-orb-2,
+    .animate-orb-3,
+    .animate-orb-4 {
+        animation: none !important;
+    }
 }
