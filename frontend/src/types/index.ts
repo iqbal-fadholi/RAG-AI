@@ -36,4 +36,25 @@ export interface ChatMessage {
   content: string;
   progress?: string;
   sources?: SourceDocument[];
+  createdAt?: string;
+}
+
+export interface Conversation {
+  id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationDetails {
+  conversation: Conversation;
+  messages: {
+    id: string;
+    conversation_id: string;
+    role: Role;
+    content: string;
+    sources: SourceDocument[];
+    created_at: string;
+  }[];
 }

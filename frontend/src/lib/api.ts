@@ -241,3 +241,54 @@ export const adminApi = {
     return res.json();
   },
 };
+
+// Chat Conversations API
+export async function fetchConversations(): Promise<import("@/types").Conversation[]> {
+  const res = await fetch(`${API_URL}/api/conversations`, {
+    headers: { ...getAuthHeaders() },
+  });
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    throw new Error('Session expired');
+  }
+  if (!res.ok) throw new Error("Failed to fetch conversations");
+  return res.json();
+}
+
+export async function fetchConversationDetails(id: string): Promise<import("@/types").ConversationDetails> {
+  const res = await fetch(`${API_URL}/api/conversations/${id}`, {
+    headers: { ...getAuthHeaders() },
+  });
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    throw new Error('Session expired');
+  }
+  if (!res.ok) throw new Error("Failed to fetch conversation details");
+  return res.json();
+}
+
+export async function updateConversationTitle(id: string, title: string): Promise<import("@/types").Conversation> {
+  const res = await fetch(`${API_URL}/api/conversations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || err.message || "Failed to update conversation title");
+  }
+  return res.json();
+}
+
+export async function deleteConversationApi(id: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_URL}/api/conversations/${id}`, {
+    method: "DELETE",
+    headers: { ...getAuthHeaders() },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || err.message || "Failed to delete conversation");
+  }
+  return res.json();
+}
+

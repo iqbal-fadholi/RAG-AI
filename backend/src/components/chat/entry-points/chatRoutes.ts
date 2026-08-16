@@ -3,11 +3,107 @@ import type { Request, Response } from 'express';
 import { asyncWrapper } from '../../../libraries/error-handling/asyncWrapper.js';
 import { chatRequestSchema } from '../domain/chatSchema.js';
 import { getAppGraph } from '../domain/chatGraph.js';
-
+import {
+  listUserConversations,
+  getConversationDetails,
+  ensureConversation,
+  saveConversationMessage,
+  renameConversation,
+  deleteConversation,
+} from '../domain/conversationService.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
+// 1. Get all conversations for current user
+router.get(
+  '/conversations',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    const conversations = await listUserConversations(userId);
+    res.json(conversations);
+  })
+);
+
+// 2. Get specific conversation details & messages
+router.get(
+  '/conversations/:id',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!id) {
+      res.status(400).json({ error: 'Invalid conversation ID' });
+      return;
+    }
+    const result = await getConversationDetails(id, userId);
+    if (!result) {
+      res.status(404).json({ error: 'Conversation not found' });
+      return;
+    }
+    res.json(result);
+  })
+);
+
+// 3. Rename a conversation
+router.patch(
+  '/conversations/:id',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!id) {
+      res.status(400).json({ error: 'Invalid conversation ID' });
+      return;
+    }
+    const { title } = req.body;
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      res.status(400).json({ error: 'Title is required' });
+      return;
+    }
+    const updated = await renameConversation(id, userId, title.trim());
+    if (!updated) {
+      res.status(404).json({ error: 'Conversation not found' });
+      return;
+    }
+    res.json(updated);
+  })
+);
+
+// 4. Delete a conversation
+router.delete(
+  '/conversations/:id',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!id) {
+      res.status(400).json({ error: 'Invalid conversation ID' });
+      return;
+    }
+    const deleted = await deleteConversation(id, userId);
+    if (!deleted) {
+      res.status(404).json({ error: 'Conversation not found' });
+      return;
+    }
+    res.json({ success: true });
+  })
+);
+
+// 5. Send message & stream response
 router.post(
   '/chat',
   asyncWrapper(async (req: Request, res: Response): Promise<void> => {
@@ -15,6 +111,17 @@ router.post(
     const validatedBody = chatRequestSchema.parse(req.body);
     const { question, thread_id: providedThreadId } = validatedBody;
     const thread_id = providedThreadId || uuidv4();
+    const userId = req.user?.userId;
+
+    // Persist conversation and user message if user is authenticated
+    if (userId) {
+      try {
+        await ensureConversation(thread_id, userId, question);
+        await saveConversationMessage(thread_id, 'user', question, []);
+      } catch (err) {
+        console.error('[ConversationSaveError] Error saving initial user message:', err);
+      }
+    }
 
     // Set headers for SSE
     res.setHeader('Content-Type', 'text/event-stream');
@@ -34,6 +141,8 @@ router.post(
     const allowedTagIds = isAdmin ? ['*'] : (req.user?.allowedTagIds || []);
     const initialState = { question, documents: [], answer: '', rewriteCount: 0, allowedTagIds };
     let tokensStreamed = false;
+    let accumulatedAnswer = '';
+    let finalSources: any[] = [];
     
     try {
       // Initialize graph with memory
@@ -59,6 +168,7 @@ router.post(
             const chunk = event.data?.chunk;
             if (chunk && chunk.content) {
               tokensStreamed = true;
+              accumulatedAnswer += chunk.content;
               res.write(`event: token\ndata: ${JSON.stringify({ token: chunk.content })}\n\n`);
             }
           }
@@ -66,6 +176,7 @@ router.post(
           if (event.name === 'generate') {
             const output = event.data?.output;
             if (output && output.answer && !tokensStreamed) {
+              accumulatedAnswer = output.answer;
               // Send the fallback answer as a token since the LLM was skipped
               res.write(`event: token\ndata: ${JSON.stringify({ token: output.answer })}\n\n`);
             }
@@ -74,23 +185,42 @@ router.post(
             const finalState = event.data?.output;
             if (finalState && finalState.documents) {
               const usedDocuments = finalState.documents.map((d: any) => d.metadata);
-              const sources = finalState.documents.map((d: any, idx: number) => ({
+              finalSources = finalState.documents.map((d: any, idx: number) => ({
                 index: idx + 1,
                 fileId: d.metadata?.file_id || d.metadata?.fileId || null,
                 filename: d.metadata?.filename || d.metadata?.source || `Document ${idx + 1}`,
                 content: d.pageContent,
                 metadata: d.metadata || {},
               }));
-              res.write(`event: metadata\ndata: ${JSON.stringify({ thread_id, sources, usedDocuments })}\n\n`);
+              res.write(`event: metadata\ndata: ${JSON.stringify({ thread_id, sources: finalSources, usedDocuments })}\n\n`);
             }
           }
         }
       }
       
+      // Save AI message to database
+      if (userId && accumulatedAnswer) {
+        try {
+          await saveConversationMessage(thread_id, 'ai', accumulatedAnswer, finalSources);
+        } catch (err) {
+          console.error('[ConversationSaveError] Error saving AI response message:', err);
+        }
+      }
+
       res.write(`event: end\ndata: {}\n\n`);
       res.end();
     } catch (error: any) {
       console.error('[ChatSSEError] Error during streaming events:', error);
+      if (userId && !tokensStreamed) {
+        try {
+          await saveConversationMessage(
+            thread_id,
+            'ai',
+            'I encountered an error processing your query. Please try again.',
+            []
+          );
+        } catch (_) {}
+      }
       res.write(`event: error\ndata: ${JSON.stringify({ message: error.message || 'Internal streaming error' })}\n\n`);
       res.end();
     }
