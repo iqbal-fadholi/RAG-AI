@@ -37,6 +37,7 @@ A full-stack, enterprise-grade **Self-Correcting Retrieval-Augmented Generation 
   - [Chat & Streaming (`/api`)](#chat--streaming-api)
   - [Document Ingestion & HITL (`/ingest`)](#document-ingestion--hitl-ingest)
   - [Admin & Access Governance (`/admin`)](#admin--access-governance-admin)
+- [Dynamic LLM & System Configuration](#-dynamic-llm--system-configuration)
 - [Access Control: RBAC & OBAC Matrix](#-access-control-rbac--obac-matrix)
 - [License](#-license)
 
@@ -165,6 +166,7 @@ sequenceDiagram
 | :--- | :--- |
 | **Self-Correcting RAG** | Autonomous LangGraph workflow with multi-query generation, Reciprocal Rank Fusion (RRF), zero-shot LLM reranking, and self-healing query rewriting fallback loops. |
 | **Context-Aware Recommendations** | Intelligent `recommendFollowUps` node providing 2–3 follow-up discussion topics appended directly to the answer in markdown, or clarifying/adjacent database topics when queries return low-ranking or unrelated documents. |
+| **Dynamic Multi-Provider LLM** | Unified LLM & Embedding architecture supporting Google Gemini and OpenAI-compatible providers (Ollama, Groq, DeepSeek, vLLM) with runtime admin dashboard switching and live connection testing. |
 | **Docling Parser Integration** | High-precision PDF, Doc, and presentation extraction using IBM Docling, converting complex tables and layouts into structured Markdown. |
 | **Human-In-The-Loop (HITL)** | Interrupted graph execution allowing users to review, edit, or reject parsed markdown before chunking and embedding. |
 | **Dual Access Control (RBAC & OBAC)** | Role-Based Access Control for UI and route navigation paired with Object-Based Access Control enforcing tag-level document isolation during vector retrieval. |
@@ -541,6 +543,56 @@ Once running, access the web application at **`http://localhost`** (served via N
 | `/admin/users` | `POST` | Provision a new user account with a predefined role |
 | `/admin/users/:id/role` | `PUT` | Reassign a user's role |
 | `/admin/tags` | `GET` | List all system tags and associated document counts |
+| `/admin/settings` | `GET` | Retrieve sanitized system configuration (masked API keys, active providers, models, temperature, retrieval K) |
+| `/admin/settings` | `PUT` | Dynamically update LLM providers, models, API keys, endpoints, and retrieval parameters at runtime |
+| `/admin/settings/test` | `POST` | Test connection to an LLM provider and validate credentials before applying changes |
+
+---
+
+## ⚙️ Dynamic LLM & System Configuration
+
+The platform features a **Multi-Provider LLM & Embedding Architecture** with dynamic runtime configuration. Administrators can modify models, switch providers, adjust temperature, and tune retrieval parameters directly from the **Admin Dashboard > Settings** tab without restarting backend services.
+
+```mermaid
+flowchart LR
+    Admin["Admin UI\n(Settings Tab)"] -->|PUT /admin/settings| API["Admin API\n(adminRoutes.ts)"]
+    API -->|Persist| DB[("PostgreSQL\n(system_settings Table)")]
+    API -->|Invalidate & Update| Cache["In-Memory Settings Cache\n(settingsService.ts)"]
+    
+    Cache --> Factory["LLM Factory\n(llmFactory.ts)"]
+    Factory -->|Provider: gemini| Gemini["Google Gemini\n(Flash / Pro / Embeddings)"]
+    Factory -->|Provider: openai| OpenAIComp["OpenAI-Compatible\n(OpenAI / Ollama / Groq / DeepSeek)"]
+```
+
+### 1. Supported LLM & Embedding Providers
+
+| Provider | Supported Chat Models | Embedding Models | Custom Base URL Support |
+| :--- | :--- | :--- | :---: |
+| **Google Gemini** | `gemini-3.1-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-1.5-pro` | `text-embedding-004` (768 dims) | ❌ |
+| **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo` | `text-embedding-3-small` (1536 dims), `text-embedding-3-large` (3072 dims) | ✅ |
+| **Local Ollama** | `llama3.2`, `qwen2.5`, `mistral`, `deepseek-r1` | `nomic-embed-text`, `all-minilm`, `bge-m3` | ✅ (`http://localhost:11434/v1`) |
+| **Groq** | `llama-3.3-70b-versatile`, `mixtral-8x7b-32768` | External embedding model required | ✅ (`https://api.groq.com/openai/v1`) |
+| **DeepSeek** | `deepseek-chat`, `deepseek-reasoner` | External embedding model required | ✅ (`https://api.deepseek.com/v1`) |
+| **vLLM / LM Studio** | Any locally hosted GGUF / HuggingFace model | Compatible OpenAI embedding endpoint | ✅ (`http://localhost:1234/v1`) |
+
+### 2. Runtime Configurable Parameters
+
+Administrators can configure the following parameters with zero downtime:
+
+- **`llmProvider`**: Primary model provider for query expansion, reranking, answering, and follow-up recommendations (`gemini` or `openai`).
+- **`googleApiKey` & `googleModel`**: API key and model selection for Google Gemini services.
+- **`openaiApiKey` & `openaiModel`**: API key and model selection for OpenAI or OpenAI-compatible endpoints.
+- **`openaiBaseUrl`**: Custom base URL for private or self-hosted LLM endpoints (fallback `dummy-key` applied when auth is disabled on local servers).
+- **`embeddingProvider`**: Provider for vectorization during document ingestion and hybrid search (`gemini` or `openai`).
+- **`openaiEmbeddingModel` & `openaiEmbeddingDimensions`**: Embedding model name and vector dimension (default: `1536`).
+- **`temperature`**: Generation temperature (0.0 to 1.0) controlling deterministic vs. creative output.
+- **`retrievalK`**: Number of candidate document chunks retrieved per query before Reciprocal Rank Fusion (1 to 50, default: `10`).
+- **`doclingServiceUrl`**: Endpoint of the IBM Docling text extraction microservice.
+
+### 3. Live Connection Testing & Security
+
+- **Real-Time Validation**: The Admin Settings UI includes a **"Test Connection"** action that dispatches a lightweight test prompt to verify API keys and model availability before committing updates.
+- **Credential Masking**: All API keys are stored encrypted/hashed in the database and masked (`••••••••`) when returned via the REST API to prevent credential leakage.
 
 ---
 
