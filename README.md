@@ -89,7 +89,7 @@ flowchart TB
 
 ### 2. LangGraph Self-Correcting Chat Loop
 
-The conversational agent executes a cyclic state graph with query expansion, hybrid search fusion, batch zero-shot reranking, and autonomous self-correction retry loops:
+The conversational agent executes a cyclic state graph with query expansion, hybrid search fusion, batch zero-shot reranking, autonomous self-correction retry loops, and context-aware follow-up topic recommendations:
 
 ```mermaid
 flowchart TD
@@ -97,16 +97,22 @@ flowchart TD
     
     GenQueries --> Retrieve["retrieve (Hybrid Search & RRF)\n• pgvector Cosine Similarity Search (k=10)\n• PostgreSQL Full-Text Keyword Search (k=10)\n• Reciprocal Rank Fusion (RRF Constant K=60)\n• OBAC Tag Filtering (* Sentinel for Admins)"]
     
-    Retrieve --> Rerank["rerankDocuments\n(Gemini Zero-Shot Batch Relevance Scoring 1-10)\nFilters Documents with Score >= 4 (Top 4 Chunks)"]
+    Retrieve --> Rerank["rerankDocuments\n(Zero-Shot Batch Relevance Scoring 1-10)\nFilters Documents with Score >= 4 (Top 4 Chunks)"]
     
     Rerank --> Decision{"decideToGenerate\nRelevant Docs Found?"}
     
     Decision -- "No (Docs = 0 & Retry < 1)" --> Rewrite["rewrite\n(LLM Reformulates Query for Retrieval)"]
     Rewrite --> Retrieve
     
-    Decision -- "Yes OR Max Retries Exceeded" --> Generate["generate\n(Gemini 3.1 Streaming Answer with [1][2] Citations)"]
+    Decision -- "Yes OR Max Retries Exceeded" --> Generate["generate\n(Streaming Answer with [1][2] Citations)"]
     
-    Generate --> SSEOut["Stream SSE Tokens & Final Document Metadata"]
+    Generate --> Recommend["recommendFollowUps\n(Context-Aware Follow-Up Suggestions &\nClarifying Topics for Low-Rank / Unrelated Docs)"]
+    
+    Recommend --> SummarizeDecision{"decideToSummarize\nHistory > 6 Messages?"}
+    SummarizeDecision -- "Yes" --> Summarize["summarizeHistory\n(Compresses Prior Turns)"]
+    Summarize --> SSEOut["Stream SSE Tokens & Final Document Metadata"]
+    SummarizeDecision -- "No" --> SSEOut
+    
     SSEOut --> END(["END"])
 ```
 
@@ -158,10 +164,11 @@ sequenceDiagram
 | Feature | Description |
 | :--- | :--- |
 | **Self-Correcting RAG** | Autonomous LangGraph workflow with multi-query generation, Reciprocal Rank Fusion (RRF), zero-shot LLM reranking, and self-healing query rewriting fallback loops. |
+| **Context-Aware Recommendations** | Intelligent `recommendFollowUps` node providing 2–3 follow-up discussion topics appended directly to the answer in markdown, or clarifying/adjacent database topics when queries return low-ranking or unrelated documents. |
 | **Docling Parser Integration** | High-precision PDF, Doc, and presentation extraction using IBM Docling, converting complex tables and layouts into structured Markdown. |
 | **Human-In-The-Loop (HITL)** | Interrupted graph execution allowing users to review, edit, or reject parsed markdown before chunking and embedding. |
 | **Dual Access Control (RBAC & OBAC)** | Role-Based Access Control for UI and route navigation paired with Object-Based Access Control enforcing tag-level document isolation during vector retrieval. |
-| **Production-Ready Streaming** | Real-time Server-Sent Events (SSE) streaming token-by-token output with node lifecycle events (`retrieve`, `rerankDocuments`, `generate`, `rewrite`) and source attributions. |
+| **Production-Ready Streaming** | Real-time Server-Sent Events (SSE) streaming token-by-token output with node lifecycle events (`retrieve`, `rerankDocuments`, `generate`, `recommendFollowUps`, `rewrite`) and source attributions. |
 | **Asynchronous BullMQ Pipeline** | Non-blocking background worker backed by Redis with automatic retry handling, idempotent vector chunk purging, and explicit failure transitions. |
 | **Singleton & Advisory Locks** | Robust database initialization with PostgreSQL advisory locks (`pg_advisory_lock`) to prevent race conditions during multi-process bootstrap. |
 | **Visual Graph Studio** | Out-of-the-box compatibility with `@langchain/langgraph-cli` and LangGraph Studio for real-time visual debugging of graphs. |
@@ -427,7 +434,7 @@ Once running, access the web application at **`http://localhost`** (served via N
     ```json
     { "thread_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6" }
     ```
-  - `event: progress`: Graph node state changes (`retrieve`, `rerankDocuments`, `generate`, `rewrite`).
+  - `event: progress`: Graph node state changes (`retrieve`, `rerankDocuments`, `generate`, `recommendFollowUps`, `rewrite`).
     ```json
     { "step": "retrieve" }
     ```
@@ -435,7 +442,7 @@ Once running, access the web application at **`http://localhost`** (served via N
     ```json
     { "token": "The reported net margin " }
     ```
-  - `event: metadata`: Final document citations and source references.
+  - `event: metadata`: Final document citations, source references, and suggested follow-ups.
     ```json
     {
       "thread_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
@@ -447,6 +454,10 @@ Once running, access the web application at **`http://localhost`** (served via N
           "content": "Quarterly net margin reached 18.4%...",
           "metadata": { "file_id": "e1f1c9d4-...", "filename": "Q3_Financial_Report.pdf" }
         }
+      ],
+      "recommendations": [
+        "What were the primary revenue drivers behind this margin?",
+        "How does this quarter compare to the prior fiscal year?"
       ]
     }
     ```

@@ -36,6 +36,7 @@ export interface ChatMessage {
   content: string;
   progress?: string;
   sources?: SourceDocument[];
+  recommendations?: string[];
   createdAt?: string;
 }
 

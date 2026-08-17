@@ -139,10 +139,11 @@ router.post(
     // Admin users get ['*'] sentinel = no filter; other users get their actual tags
     const isAdmin = req.user?.pages?.includes('admin');
     const allowedTagIds = isAdmin ? ['*'] : (req.user?.allowedTagIds || []);
-    const initialState = { question, documents: [], answer: '', rewriteCount: 0, allowedTagIds };
+    const initialState = { question, documents: [], rawDocuments: [], recommendations: [], answer: '', rewriteCount: 0, allowedTagIds };
     let tokensStreamed = false;
     let accumulatedAnswer = '';
     let finalSources: any[] = [];
+    let finalRecommendations: string[] = [];
     
     try {
       // Initialize graph with memory
@@ -158,7 +159,7 @@ router.post(
         console.log(`[LangGraph Stream] event: ${event.event}, name: ${event.name}`);
         if (event.event === 'on_chain_start') {
           // Filter for specific node starts
-          if (['retrieve', 'rerankDocuments', 'generate', 'rewrite'].includes(event.name)) {
+          if (['retrieve', 'rerankDocuments', 'generate', 'recommendFollowUps', 'rewrite'].includes(event.name)) {
             res.write(`event: progress\ndata: ${JSON.stringify({ step: event.name })}\n\n`);
           }
         } else if (event.event === 'on_chat_model_stream') {
@@ -180,19 +181,32 @@ router.post(
               // Send the fallback answer as a token since the LLM was skipped
               res.write(`event: token\ndata: ${JSON.stringify({ token: output.answer })}\n\n`);
             }
+          } else if (event.name === 'recommendFollowUps') {
+            const output = event.data?.output;
+            if (output?.recommendations && Array.isArray(output.recommendations)) {
+              finalRecommendations = output.recommendations;
+            }
+            if (output?.answer && output.answer.length > accumulatedAnswer.length) {
+              const addition = output.answer.slice(accumulatedAnswer.length);
+              accumulatedAnswer = output.answer;
+              res.write(`event: token\ndata: ${JSON.stringify({ token: addition })}\n\n`);
+            }
           } else if (event.name === 'LangGraph') {
             // Send metadata at the end of the entire graph
             const finalState = event.data?.output;
-            if (finalState && finalState.documents) {
-              const usedDocuments = finalState.documents.map((d: any) => d.metadata);
-              finalSources = finalState.documents.map((d: any, idx: number) => ({
+            if (finalState) {
+              if (finalState.recommendations && Array.isArray(finalState.recommendations)) {
+                finalRecommendations = finalState.recommendations;
+              }
+              const usedDocuments = (finalState.documents || []).map((d: any) => d.metadata);
+              finalSources = (finalState.documents || []).map((d: any, idx: number) => ({
                 index: idx + 1,
                 fileId: d.metadata?.file_id || d.metadata?.fileId || null,
                 filename: d.metadata?.filename || d.metadata?.source || `Document ${idx + 1}`,
                 content: d.pageContent,
                 metadata: d.metadata || {},
               }));
-              res.write(`event: metadata\ndata: ${JSON.stringify({ thread_id, sources: finalSources, usedDocuments })}\n\n`);
+              res.write(`event: metadata\ndata: ${JSON.stringify({ thread_id, sources: finalSources, usedDocuments, recommendations: finalRecommendations })}\n\n`);
             }
           }
         }

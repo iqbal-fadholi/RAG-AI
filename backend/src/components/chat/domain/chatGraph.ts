@@ -27,6 +27,14 @@ export const GraphState = Annotation.Root({
   documents: Annotation<Document[]>({
     reducer: (x, y) => y ?? x,
   }),
+  rawDocuments: Annotation<Document[]>({
+    reducer: (x, y) => y ?? x,
+    default: () => [],
+  }),
+  recommendations: Annotation<string[]>({
+    reducer: (x, y) => y ?? x,
+    default: () => [],
+  }),
   answer: Annotation<string>({
     reducer: (x, y) => y ?? x,
   }),
@@ -123,7 +131,7 @@ async function retrieve(state: typeof GraphState.State) {
     const accessibleFileIds = await getAccessibleFileIds(allowedTagIds);
     if (accessibleFileIds.length === 0) {
       console.log("No accessible documents for user's tag set.");
-      return { documents: [] };
+      return { documents: [], rawDocuments: [] };
     }
     metadataFilter = {
       file_id: { $in: accessibleFileIds },
@@ -185,7 +193,7 @@ async function retrieve(state: typeof GraphState.State) {
   console.log(
     `Fused ${docMap.size} unique docs down to top ${finalDocs.length} using RRF.`,
   );
-  return { documents: finalDocs };
+  return { documents: finalDocs, rawDocuments: finalDocs };
 }
 
 async function rerankDocuments(state: typeof GraphState.State) {
@@ -277,7 +285,6 @@ async function generate(state: typeof GraphState.State) {
       "I could not find relevant information in the uploaded documents to answer your question.";
     return {
       answer: emptyAnswer,
-      messages: [new HumanMessage(question), new AIMessage(emptyAnswer)],
     };
   }
 
@@ -341,10 +348,112 @@ async function generate(state: typeof GraphState.State) {
     }
   }
 
-  // Append new messages to history
   return {
     answer,
-    messages: [new HumanMessage(question), new AIMessage(answer)],
+  };
+}
+
+async function recommendFollowUps(state: typeof GraphState.State) {
+  console.log("---RECOMMEND FOLLOW-UPS---");
+  const { question, documents, rawDocuments, answer } = state;
+
+  const hasRelevantDocs = documents && documents.length > 0;
+  const docsToInspect = hasRelevantDocs ? documents : (rawDocuments || []);
+
+  const docsSummary = docsToInspect
+    .slice(0, 3)
+    .map((doc, idx) => {
+      const source = doc.metadata?.filename || doc.metadata?.source || `Doc ${idx + 1}`;
+      const snippet = doc.pageContent.slice(0, 200).replace(/\s+/g, " ");
+      return `[Source: ${source}] ${snippet}...`;
+    })
+    .join("\n");
+
+  const gradingLlmBase = getChatModel({
+    temperature: 0.2,
+    streaming: false,
+    maxRetries: 3,
+  });
+
+  const recommendationLlm = gradingLlmBase.withStructuredOutput(
+    z.object({
+      recommendations: z
+        .array(z.string())
+        .min(1)
+        .max(3)
+        .describe("2 to 3 concise, relevant suggested follow-up questions or discussion topics for the user"),
+    }),
+    { name: "recommend_follow_ups" },
+  );
+
+  let prompt: any;
+  if (hasRelevantDocs) {
+    prompt = PromptTemplate.fromTemplate(`
+      You are an expert AI discussion assistant.
+      The user asked: "{question}"
+      The generated answer is:
+      "{answer}"
+      
+      Relevant document context:
+      {docs_summary}
+
+      Generate 2 to 3 short, insightful follow-up questions or next discussion topics that the user might want to explore based on this answer and the available context.
+      Each question should be concise (1 sentence) and directly applicable.
+    `);
+  } else {
+    prompt = PromptTemplate.fromTemplate(`
+      You are an expert AI discussion assistant.
+      The user asked: "{question}"
+      However, no directly relevant documents were found in the database to answer this question.
+      
+      Here are the closest/partial documents or topics available in the knowledge base:
+      {docs_summary}
+      
+      Generate 2 to 3 helpful alternative or clarifying questions/topics that:
+      1. Guide the user to rephrase their inquiry or clarify what they are looking for, OR
+      2. Suggest related topics from the available knowledge base that they might find useful.
+      Keep each suggestion concise (1 sentence).
+    `);
+  }
+
+  let recommendations: string[] = [];
+  try {
+    const chain = prompt.pipe(recommendationLlm);
+    const res = await chain.invoke({
+      question,
+      answer: answer || "",
+      docs_summary: docsSummary || "No document snippets available.",
+    });
+    if (res && Array.isArray(res.recommendations) && res.recommendations.length > 0) {
+      recommendations = res.recommendations.slice(0, 3);
+    }
+  } catch (err) {
+    console.error("Failed to generate structured follow-up recommendations:", err);
+    if (hasRelevantDocs) {
+      recommendations = [
+        "Can you provide more details about this?",
+        "What are the main implications or next steps?",
+      ];
+    } else {
+      recommendations = [
+        "Could you clarify or rephrase your question?",
+        "What specific document or topic are you looking for?",
+      ];
+    }
+  }
+
+  const recommendationMarkdown =
+    recommendations.length > 0
+      ? `\n\n### 💡 Suggested Follow-ups\n` +
+        recommendations.map((r) => `- ${r}`).join("\n")
+      : "";
+
+  const updatedAnswer = (answer || "") + recommendationMarkdown;
+
+  return {
+    recommendations,
+    answer: updatedAnswer,
+    messages: [new HumanMessage(question), new AIMessage(updatedAnswer)],
   };
 }
 
@@ -462,6 +571,7 @@ const workflow = new StateGraph(GraphState)
   .addNode("retrieve", retrieve)
   .addNode("rerankDocuments", rerankDocuments)
   .addNode("generate", generate)
+  .addNode("recommendFollowUps", recommendFollowUps)
   .addNode("rewrite", rewrite)
   .addNode("summarizeHistory", summarizeHistory)
 
@@ -473,7 +583,8 @@ const workflow = new StateGraph(GraphState)
     generate: "generate",
   })
   .addEdge("rewrite", "retrieve")
-  .addConditionalEdges("generate", decideToSummarize, {
+  .addEdge("generate", "recommendFollowUps")
+  .addConditionalEdges("recommendFollowUps", decideToSummarize, {
     summarizeHistory: "summarizeHistory",
     [END]: END,
   })

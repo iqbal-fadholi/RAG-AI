@@ -137,6 +137,15 @@ export function ChatInput() {
                       )
                     );
                   }
+                  if (parsed.recommendations && Array.isArray(parsed.recommendations) && parsed.recommendations.length > 0) {
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === aiMsgId
+                          ? { ...msg, recommendations: parsed.recommendations }
+                          : msg
+                      )
+                    );
+                  }
                 } catch {}
               } else if (currentEvent === "progress") {
                 try {
