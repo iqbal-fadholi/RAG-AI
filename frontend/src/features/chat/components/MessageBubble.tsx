@@ -65,11 +65,45 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     setActiveModal((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
-  // Helper to convert citation patterns like [1], [2] into interactive buttons
+  // Helper to parse comma-separated or range numbers inside brackets like "1", "3, 4", "1-3", "1, 3-5"
+  const parseCitationIndices = (raw: string): number[] => {
+    const segments = raw.split(",");
+    const indices: number[] = [];
+
+    for (const seg of segments) {
+      const trimmed = seg.trim();
+      if (!trimmed) continue;
+
+      // Check for range like "1-3", "1–3", or "1—3" (up to 3 digits each)
+      const rangeMatch = trimmed.match(/^(\d{1,3})\s*[-–—]\s*(\d{1,3})$/);
+      if (rangeMatch) {
+        const start = parseInt(rangeMatch[1], 10);
+        const end = parseInt(rangeMatch[2], 10);
+        if (start <= end && end - start <= 20) {
+          for (let i = start; i <= end; i++) {
+            if (!indices.includes(i)) indices.push(i);
+          }
+        } else {
+          if (!indices.includes(start)) indices.push(start);
+          if (!indices.includes(end)) indices.push(end);
+        }
+      } else if (/^\d{1,3}$/.test(trimmed)) {
+        const num = parseInt(trimmed, 10);
+        if (!indices.includes(num)) {
+          indices.push(num);
+        }
+      }
+    }
+
+    return indices;
+  };
+
+  // Helper to convert citation patterns like [1], [2], [3, 4], [1-3] into interactive buttons
   const renderWithCitations = useCallback(
     (text: string): React.ReactNode => {
       if (typeof text !== "string") return text;
-      const citationRegex = /\[(\d+)\]/g;
+      // Matches bracketed numbers: [1], [3, 4], [1, 2, 3], [1-3], [1, 3-5, 8], etc.
+      const citationRegex = /\[(\s*\d{1,3}(?:\s*(?:,\s*|\s*[-–—]\s*)\d{1,3})*\s*)\]/g;
       const parts: React.ReactNode[] = [];
       let lastIndex = 0;
       let match: RegExpExecArray | null;
@@ -78,25 +112,35 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         if (match.index > lastIndex) {
           parts.push(text.slice(lastIndex, match.index));
         }
-        const citationIndex = parseInt(match[1], 10);
-        const hasSource = sources?.some((s) => s.index === citationIndex);
 
-        parts.push(
-          <button
-            key={`cite-${match.index}-${citationIndex}`}
-            type="button"
-            onClick={() => handleCitationClick(citationIndex)}
-            disabled={!hasSource}
-            className={`inline-flex items-center justify-center px-1.5 py-0.2 mx-0.5 text-xs font-mono font-semibold rounded cursor-pointer transition-all active:scale-95 align-baseline ${
-              hasSource
-                ? "text-primary bg-primary/10 hover:bg-primary/25 border border-primary/30 hover:border-primary/60 shadow-sm"
-                : "text-on-surface-variant bg-white/5 border border-outline-variant cursor-default"
-            }`}
-            title={hasSource ? `View Source [${citationIndex}]` : `Source [${citationIndex}]`}
-          >
-            [{citationIndex}]
-          </button>
-        );
+        const rawIndices = match[1];
+        const citationIndices = parseCitationIndices(rawIndices);
+
+        if (citationIndices.length > 0) {
+          citationIndices.forEach((citationIndex) => {
+            const hasSource = sources?.some((s) => s.index === citationIndex);
+
+            parts.push(
+              <button
+                key={`cite-${match!.index}-${citationIndex}`}
+                type="button"
+                onClick={() => handleCitationClick(citationIndex)}
+                disabled={!hasSource}
+                className={`inline-flex items-center justify-center px-1.5 py-0.2 mx-0.5 text-xs font-mono font-semibold rounded cursor-pointer transition-all active:scale-95 align-baseline ${
+                  hasSource
+                    ? "text-primary bg-primary/10 hover:bg-primary/25 border border-primary/30 hover:border-primary/60 shadow-sm"
+                    : "text-on-surface-variant bg-white/5 border border-outline-variant cursor-default"
+                }`}
+                title={hasSource ? `View Source [${citationIndex}]` : `Source [${citationIndex}]`}
+              >
+                [{citationIndex}]
+              </button>
+            );
+          });
+        } else {
+          parts.push(match[0]);
+        }
+
         lastIndex = match.index + match[0].length;
       }
 
@@ -153,6 +197,13 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                     li: ({ children }) => <li className="leading-relaxed">{processCitationNodes(children)}</li>,
                     strong: ({ children }) => <strong>{processCitationNodes(children)}</strong>,
                     em: ({ children }) => <em>{processCitationNodes(children)}</em>,
+                    h1: ({ children }) => <h1 className="text-xl font-bold mb-2">{processCitationNodes(children)}</h1>,
+                    h2: ({ children }) => <h2 className="text-lg font-bold mb-2">{processCitationNodes(children)}</h2>,
+                    h3: ({ children }) => <h3 className="text-base font-semibold mb-1">{processCitationNodes(children)}</h3>,
+                    h4: ({ children }) => <h4 className="text-sm font-semibold mb-1">{processCitationNodes(children)}</h4>,
+                    blockquote: ({ children }) => <blockquote className="border-l-2 border-primary/40 pl-4 my-2 italic">{processCitationNodes(children)}</blockquote>,
+                    td: ({ children }) => <td className="p-2 border border-outline-variant">{processCitationNodes(children)}</td>,
+                    th: ({ children }) => <th className="p-2 border border-outline-variant font-semibold">{processCitationNodes(children)}</th>,
                   }}
                 >
                   {content}
