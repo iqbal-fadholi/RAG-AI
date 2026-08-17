@@ -7,6 +7,7 @@ import { AdminTabs } from "./AdminTabs";
 import { UsersTab } from "./UsersTab";
 import { RolesTab } from "./RolesTab";
 import { KnowledgeObacTab } from "./KnowledgeObacTab";
+import { SettingsTab } from "./SettingsTab";
 import { CreateRoleModal } from "./CreateRoleModal";
 import { CreateUserModal } from "./CreateUserModal";
 import { CreateTagModal } from "./CreateTagModal";
@@ -104,6 +105,8 @@ export function AdminDashboard() {
               onDeleteTag={handleDeleteTag}
             />
           )}
+
+          {activeTab === "settings" && <SettingsTab />}
         </>
       )}
 

@@ -5,6 +5,8 @@ import bcrypt from 'bcryptjs';
 import { asyncWrapper } from '../../../libraries/error-handling/asyncWrapper.js';
 import { AppError } from '../../../libraries/error-handling/AppError.js';
 import { pool } from '../../../libraries/db/checkpoint.js';
+import { getSanitizedSettings, updateSettings } from '../../../libraries/config/settingsService.js';
+import { testProviderConnection } from '../../../libraries/llm/llmFactory.js';
 
 const router = Router();
 
@@ -340,6 +342,66 @@ router.delete(
     const { id } = req.params;
     await pool.query('DELETE FROM tags WHERE id = $1', [id]);
     res.json({ message: 'Tag deleted successfully' });
+  })
+);
+
+// ===== SYSTEM & LLM SETTINGS =====
+
+router.get(
+  '/settings',
+  asyncWrapper(async (_req: Request, res: Response): Promise<void> => {
+    const settings = await getSanitizedSettings();
+    res.json(settings);
+  })
+);
+
+const updateSettingsSchema = z.object({
+  llmProvider: z.enum(['gemini', 'openai']).optional(),
+  googleApiKey: z.string().optional(),
+  googleModel: z.string().min(1).optional(),
+  openaiApiKey: z.string().optional(),
+  openaiBaseUrl: z.string().optional(),
+  openaiModel: z.string().min(1).optional(),
+  embeddingProvider: z.enum(['gemini', 'openai']).optional(),
+  openaiEmbeddingModel: z.string().min(1).optional(),
+  openaiEmbeddingDimensions: z.coerce.number().min(1).optional(),
+  temperature: z.coerce.number().min(0).max(1).optional(),
+  retrievalK: z.coerce.number().int().min(1).max(50).optional(),
+  doclingServiceUrl: z.string().min(1).optional(),
+});
+
+router.put(
+  '/settings',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const validated = updateSettingsSchema.parse(req.body);
+    const updated = await updateSettings(validated);
+    res.json({
+      message: 'System settings updated successfully',
+      settings: updated,
+    });
+  })
+);
+
+const testConnectionSchema = z.object({
+  provider: z.enum(['gemini', 'openai']),
+  apiKey: z.string().optional(),
+  model: z.string().optional(),
+  baseUrl: z.string().optional(),
+});
+
+router.post(
+  '/settings/test',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const params = testConnectionSchema.parse(req.body);
+    try {
+      const result = await testProviderConnection(params);
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({
+        success: false,
+        error: err.message || 'Failed to connect to LLM provider',
+      });
+    }
   })
 );
 

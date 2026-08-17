@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, ShieldCheck, Tag } from "lucide-react";
+import { Users, ShieldCheck, Tag, Sliders } from "lucide-react";
 import { Tabs } from "@/components/ui";
 import { AdminTab } from "../types";
 import type { TabItem } from "@/components/ui";
@@ -38,6 +38,11 @@ export function AdminTabs({
       label: "Knowledge OBAC",
       icon: <Tag className="w-4 h-4" />,
       count: tagsCount,
+    },
+    {
+      id: "settings",
+      label: "LLM & System Settings",
+      icon: <Sliders className="w-4 h-4" />,
     },
   ];
 

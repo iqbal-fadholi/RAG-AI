@@ -35,4 +35,52 @@ export const AVAILABLE_PAGES: PagePermission[] = [
   { id: "admin", label: "Administration", desc: "Manage users, roles, and OBAC tags" },
 ];
 
-export type AdminTab = "users" | "roles" | "tags";
+export type AdminTab = "users" | "roles" | "tags" | "settings";
+
+export interface SystemSettings {
+  llmProvider: "gemini" | "openai";
+  googleModel: string;
+  hasGoogleApiKey: boolean;
+  googleApiKeyMasked: string;
+  openaiModel: string;
+  openaiBaseUrl: string;
+  hasOpenaiApiKey: boolean;
+  openaiApiKeyMasked: string;
+  embeddingProvider: "gemini" | "openai";
+  openaiEmbeddingModel: string;
+  openaiEmbeddingDimensions: number;
+  temperature: number;
+  retrievalK: number;
+  doclingServiceUrl: string;
+}
+
+export interface UpdateSystemSettingsPayload {
+  llmProvider?: "gemini" | "openai";
+  googleApiKey?: string;
+  googleModel?: string;
+  openaiApiKey?: string;
+  openaiBaseUrl?: string;
+  openaiModel?: string;
+  embeddingProvider?: "gemini" | "openai";
+  openaiEmbeddingModel?: string;
+  openaiEmbeddingDimensions?: number;
+  temperature?: number;
+  retrievalK?: number;
+  doclingServiceUrl?: string;
+}
+
+export interface TestConnectionPayload {
+  provider: "gemini" | "openai";
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+}
+
+export interface TestConnectionResult {
+  success: boolean;
+  latencyMs?: number;
+  message?: string;
+  model?: string;
+  provider?: string;
+  error?: string;
+}

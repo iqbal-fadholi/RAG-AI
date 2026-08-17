@@ -266,6 +266,38 @@ export const adminApi = {
     if (!res.ok) throw new Error("Failed to delete tag");
     return res.json();
   },
+
+  async getSettings(): Promise<import("@/features/admin/types").SystemSettings> {
+    const res = await fetch(`${API_URL}/admin/settings`, { headers: { ...getAuthHeaders() } });
+    if (!res.ok) throw new Error("Failed to fetch system settings");
+    return res.json();
+  },
+
+  async updateSettings(data: import("@/features/admin/types").UpdateSystemSettingsPayload) {
+    const res = await fetch(`${API_URL}/admin/settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || err.message || "Failed to update settings");
+    }
+    return res.json();
+  },
+
+  async testConnection(data: import("@/features/admin/types").TestConnectionPayload): Promise<import("@/features/admin/types").TestConnectionResult> {
+    const res = await fetch(`${API_URL}/admin/settings/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(result.error || result.message || "Connection test failed");
+    }
+    return result;
+  },
 };
 
 // Chat Conversations API

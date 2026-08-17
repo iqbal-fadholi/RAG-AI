@@ -11,6 +11,7 @@ import {
 } from "@langchain/core/messages";
 import { getVectorStore } from "../../../libraries/db/pgvector.js";
 import { getChatModel } from "../../../libraries/llm/llmFactory.js";
+import { getEffectiveSettingsSync } from "../../../libraries/config/settingsService.js";
 import { getPostgresSaver, pool } from "../../../libraries/db/checkpoint.js";
 import { keywordSearch, getAccessibleFileIds } from "../../../libraries/db/documents.js";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
@@ -42,23 +43,17 @@ export const GraphState = Annotation.Root({
   }),
 });
 
-const llm = getChatModel({
-  temperature: 0,
-  maxRetries: 3,
-});
-
-const gradingLlmBase = getChatModel({
-  temperature: 0,
-  streaming: false,
-  maxRetries: 3,
-});
-
-
 // 2. Nodes
 
 async function generateQueries(state: typeof GraphState.State) {
   console.log("---GENERATE MULTI-QUERIES---");
   const { question, messages } = state;
+
+  const gradingLlmBase = getChatModel({
+    temperature: 0,
+    streaming: false,
+    maxRetries: 3,
+  });
 
   const queryGenLlm = gradingLlmBase.withStructuredOutput(
     z.object({
@@ -136,8 +131,11 @@ async function retrieve(state: typeof GraphState.State) {
   }
   // If '*' sentinel is present (admin), no filter is applied
 
+  const currentSettings = getEffectiveSettingsSync();
+  const k = currentSettings.retrievalK || 10;
+
   const retriever = vectorStore.asRetriever({
-    k: 10,
+    k,
     ...(metadataFilter ? { filter: metadataFilter } : {}),
   });
 
@@ -151,7 +149,7 @@ async function retrieve(state: typeof GraphState.State) {
   const promises = queries.map((q) =>
     Promise.all([
       retriever.invoke(q),
-      keywordSearch(q, 10, isUnrestricted ? undefined : allowedTagIds),
+      keywordSearch(q, k, isUnrestricted ? undefined : allowedTagIds),
     ])
   );
 
@@ -178,10 +176,10 @@ async function retrieve(state: typeof GraphState.State) {
     keywordDocs.forEach((kDoc, index) => addScore(kDoc, index + 1, true));
   });
 
-  // Sort by RRF score descending and keep top 10 overall
+  // Sort by RRF score descending and keep top k overall
   const finalDocs = Array.from(docMap.values())
     .sort((a, b) => b.rrfScore - a.rrfScore)
-    .slice(0, 10)
+    .slice(0, k)
     .map((item) => item.doc);
 
   console.log(
@@ -195,6 +193,12 @@ async function rerankDocuments(state: typeof GraphState.State) {
   const { question, documents } = state;
 
   if (!documents || documents.length === 0) return { documents: [] };
+
+  const gradingLlmBase = getChatModel({
+    temperature: 0,
+    streaming: false,
+    maxRetries: 3,
+  });
 
   const rerankingLlm = gradingLlmBase.withStructuredOutput(
     z.object({
@@ -307,6 +311,7 @@ async function generate(state: typeof GraphState.State) {
     })
     .join("\n\n");
 
+  const llm = getChatModel({ streaming: true });
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
 
   const invokeInput = {
@@ -358,6 +363,7 @@ async function rewrite(state: typeof GraphState.State) {
     Formulate an improved question.
   `);
 
+  const llm = getChatModel({ streaming: false, temperature: 0 });
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
 
   try {
@@ -385,6 +391,7 @@ async function summarizeHistory(state: typeof GraphState.State) {
   const chatHistoryStr = messagesToSummarize
     .map((m) => `${m._getType() === "human" ? "User" : "AI"}: ${m.content}`)
     .join("\n");
+  const llm = getChatModel({ streaming: false, temperature: 0 });
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
 
   const summary = await chain.invoke({ chat_history: chatHistoryStr });

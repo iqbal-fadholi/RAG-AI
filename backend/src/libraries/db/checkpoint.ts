@@ -13,6 +13,7 @@ export const pool = new pg.Pool({
 import { setupDocumentsTable } from './documents.js';
 import { setupAuthTables } from './authTables.js';
 import { setupChatTables } from './chatTables.js';
+import { setupSystemSettingsTable } from './systemSettings.js';
 
 let setupPromise: Promise<PostgresSaver> | null = null;
 
@@ -24,6 +25,7 @@ export const getPostgresSaver = async (): Promise<PostgresSaver> => {
       await setupDocumentsTable(); // Creates our custom uploaded_files table
       await setupAuthTables(); // Creates auth/RBAC/OBAC tables and seeds data
       await setupChatTables(); // Creates conversations and conversation_messages tables
+      await setupSystemSettingsTable(); // Creates system_settings table and seeds initial values
       return checkpointer;
     })().catch((err) => {
       setupPromise = null; // Reset so retries are possible if failed
