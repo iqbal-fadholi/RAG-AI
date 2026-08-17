@@ -295,6 +295,31 @@ router.delete(
 
 // ===== TAGS =====
 
+const createTagSchema = z.object({
+  name: z.string().min(1, 'Tag name is required').max(50, 'Tag name cannot exceed 50 characters'),
+});
+
+router.post(
+  '/tags',
+  asyncWrapper(async (req: Request, res: Response): Promise<void> => {
+    const { name } = createTagSchema.parse(req.body);
+    const trimmed = name.trim().toLowerCase();
+    if (!trimmed) {
+      throw new AppError('BadRequest', 400, 'Tag name cannot be empty');
+    }
+
+    const result = await pool.query(
+      `INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id, name, created_at`,
+      [trimmed]
+    );
+
+    res.status(201).json({
+      ...result.rows[0],
+      document_count: 0,
+    });
+  })
+);
+
 router.get(
   '/tags',
   asyncWrapper(async (_req: Request, res: Response): Promise<void> => {

@@ -295,6 +295,7 @@ export default function DocumentDetailPage() {
         saving={savingTags}
         onClose={() => setShowTagsModal(false)}
         onSave={handleSaveDocTags}
+        onTagCreated={(newTag) => setAvailableTags((prev) => [...prev.filter((t) => t.id !== newTag.id), newTag])}
       />
     </main>
   );

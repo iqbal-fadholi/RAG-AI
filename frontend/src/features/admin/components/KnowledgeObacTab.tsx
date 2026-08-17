@@ -1,6 +1,6 @@
 "use client";
 
-import { Layers, Tag, FileText, Trash2 } from "lucide-react";
+import { Layers, Tag, FileText, Trash2, Plus } from "lucide-react";
 import { Card, Badge, Button, EmptyState } from "@/components/ui";
 import { Role, TagItem } from "../types";
 
@@ -9,6 +9,7 @@ interface KnowledgeObacTabProps {
   tags: TagItem[];
   saving: boolean;
   onOpenTagModal: (role: Role) => void;
+  onOpenCreateTagModal: () => void;
   onDeleteTag: (tagId: string, tagName: string) => void;
 }
 
@@ -17,15 +18,26 @@ export function KnowledgeObacTab({
   tags,
   saving,
   onOpenTagModal,
+  onOpenCreateTagModal,
   onDeleteTag,
 }: KnowledgeObacTabProps) {
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="font-headline-md text-headline-md text-white">Object-Based Access Control (OBAC)</h2>
-        <p className="font-body-md text-body-md text-on-surface-variant mt-1">
-          Documents tagged during ingestion can only be retrieved by roles permitted to access those tags. Untagged documents are public to all authenticated users.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="font-headline-md text-headline-md text-white">Object-Based Access Control (OBAC)</h2>
+          <p className="font-body-md text-body-md text-on-surface-variant mt-1">
+            Documents tagged during ingestion can only be retrieved by roles permitted to access those tags. Untagged documents are public to all authenticated users.
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          icon={<Plus className="w-4 h-4" />}
+          onClick={onOpenCreateTagModal}
+          className="shrink-0"
+        >
+          Add Tag
+        </Button>
       </div>
 
       {/* Roles Tag Matrix */}
@@ -92,11 +104,19 @@ export function KnowledgeObacTab({
 
       {/* All Registered Tags List */}
       <Card className="shadow-2xl">
-        <Card.Header>
+        <Card.Header className="flex items-center justify-between">
           <h3 className="font-headline-md text-base font-bold text-white flex items-center gap-2">
             <Tag className="w-4 h-4 text-primary" />
             All Ingestion Tags ({tags.length})
           </h3>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Plus className="w-3.5 h-3.5" />}
+            onClick={onOpenCreateTagModal}
+          >
+            Add Tag
+          </Button>
         </Card.Header>
 
         <Card.Body>
@@ -104,7 +124,12 @@ export function KnowledgeObacTab({
             <EmptyState
               icon={<Tag className="w-8 h-8" />}
               title="No tags yet"
-              description="Tags are automatically created when documents are uploaded with tags during ingestion."
+              description="Register knowledge tags to categorize documents and enforce OBAC access controls."
+              action={
+                <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={onOpenCreateTagModal}>
+                  Create First Tag
+                </Button>
+              }
             />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">

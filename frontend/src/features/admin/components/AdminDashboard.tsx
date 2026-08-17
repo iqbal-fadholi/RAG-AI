@@ -9,6 +9,7 @@ import { RolesTab } from "./RolesTab";
 import { KnowledgeObacTab } from "./KnowledgeObacTab";
 import { CreateRoleModal } from "./CreateRoleModal";
 import { CreateUserModal } from "./CreateUserModal";
+import { CreateTagModal } from "./CreateTagModal";
 import { AssignTagsModal } from "./AssignTagsModal";
 
 export function AdminDashboard() {
@@ -30,6 +31,8 @@ export function AdminDashboard() {
     setShowCreateRoleModal,
     showCreateUserModal,
     setShowCreateUserModal,
+    showCreateTagModal,
+    setShowCreateTagModal,
     selectedRoleForTags,
     setSelectedRoleForTags,
     handleRoleChange,
@@ -39,6 +42,7 @@ export function AdminDashboard() {
     handleCreateRole,
     handleDeleteRole,
     handleSaveRoleTags,
+    handleCreateTag,
     handleDeleteTag,
   } = useAdminData();
 
@@ -96,6 +100,7 @@ export function AdminDashboard() {
               tags={tags}
               saving={saving}
               onOpenTagModal={setSelectedRoleForTags}
+              onOpenCreateTagModal={() => setShowCreateTagModal(true)}
               onDeleteTag={handleDeleteTag}
             />
           )}
@@ -116,6 +121,13 @@ export function AdminDashboard() {
         onClose={() => setShowCreateRoleModal(false)}
         saving={saving}
         onCreateRole={handleCreateRole}
+      />
+
+      <CreateTagModal
+        isOpen={showCreateTagModal}
+        onClose={() => setShowCreateTagModal(false)}
+        saving={saving}
+        onCreateTag={handleCreateTag}
       />
 
       <AssignTagsModal

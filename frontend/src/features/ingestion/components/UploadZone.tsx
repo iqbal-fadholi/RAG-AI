@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { UploadCloud, Tag, Check, Shield } from "lucide-react";
+import { UploadCloud, Tag, Check, Shield, Plus, X, Loader2 } from "lucide-react";
 import axios from "axios";
 import { useIngestionStore } from "../store/useIngestionStore";
 import { useDocuments } from "../hooks/useDocuments";
-import { getAuthHeaders, fetchTags } from "@/lib/api";
+import { getAuthHeaders, fetchTags, createTag } from "@/lib/api";
 import { Card, Button, Badge } from "@/components/ui";
 import { TagItem } from "@/types";
 
@@ -18,6 +18,10 @@ export function UploadZone() {
 
   const [availableTags, setAvailableTags] = useState<TagItem[]>([]);
   const [selectedTagNames, setSelectedTagNames] = useState<string[]>([]);
+  const [showAddTag, setShowAddTag] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [creatingTag, setCreatingTag] = useState(false);
+  const [tagError, setTagError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTags()
@@ -29,6 +33,35 @@ export function UploadZone() {
     setSelectedTagNames((prev) =>
       prev.includes(tagName) ? prev.filter((t) => t !== tagName) : [...prev, tagName]
     );
+  };
+
+  const handleCreateTag = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newTagName.trim();
+    if (!trimmed) return;
+
+    setCreatingTag(true);
+    setTagError(null);
+    try {
+      const created = await createTag(trimmed);
+      // Avoid duplicate in availableTags
+      setAvailableTags((prev) => {
+        if (prev.some((t) => t.id === created.id || t.name.toLowerCase() === created.name.toLowerCase())) {
+          return prev;
+        }
+        return [...prev, created];
+      });
+      // Automatically select the newly created tag
+      setSelectedTagNames((prev) =>
+        prev.includes(created.name) ? prev : [...prev, created.name]
+      );
+      setNewTagName("");
+      setShowAddTag(false);
+    } catch (err: unknown) {
+      setTagError(err instanceof Error ? err.message : "Failed to create tag");
+    } finally {
+      setCreatingTag(false);
+    }
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,8 +113,8 @@ export function UploadZone() {
 
   return (
     <section className="w-full mb-xl space-y-4">
-      {/* Optional OBAC Tag Selector */}
-      {availableTags.length > 0 && status === 'idle' && (
+      {/* OBAC Tag Selector */}
+      {status === 'idle' && (
         <Card variant="default" className="p-4 bg-surface-container-high/40 border border-outline-variant/30 shadow-md">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
@@ -97,7 +130,16 @@ export function UploadZone() {
             </span>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          {tagError && (
+            <div className="mb-3 p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-body-sm flex items-center justify-between">
+              <span>{tagError}</span>
+              <button onClick={() => setTagError(null)} className="text-red-400 hover:text-white p-0.5">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
             {availableTags.map((tag) => {
               const isSelected = selectedTagNames.includes(tag.name);
               return (
@@ -117,6 +159,53 @@ export function UploadZone() {
                 </button>
               );
             })}
+
+            {/* Inline Add Tag Form or Button */}
+            {showAddTag ? (
+              <form onSubmit={handleCreateTag} className="inline-flex items-center gap-1.5">
+                <input
+                  type="text"
+                  placeholder="New tag name..."
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  autoFocus
+                  disabled={creatingTag}
+                  className="px-2.5 py-1 text-xs rounded-xl bg-surface-container-high border border-primary/50 text-white placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary h-[30px] w-36"
+                />
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  disabled={creatingTag || !newTagName.trim()}
+                  className="h-[30px] px-2.5 text-xs py-0"
+                >
+                  {creatingTag ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddTag(false);
+                    setNewTagName("");
+                    setTagError(null);
+                  }}
+                  disabled={creatingTag}
+                  className="p-1 text-on-surface-variant hover:text-white rounded-lg hover:bg-surface-variant/60 transition-colors"
+                  title="Cancel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowAddTag(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl font-label-md text-xs border border-dashed border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/70 transition-all cursor-pointer"
+                title="Create a new tag"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add Tag</span>
+              </button>
+            )}
           </div>
         </Card>
       )}

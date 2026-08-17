@@ -238,6 +238,7 @@ export function HistoryTable() {
         saving={savingTags}
         onClose={() => setSelectedDocForTags(null)}
         onSave={handleSaveDocTags}
+        onTagCreated={(newTag) => setAvailableTags((prev) => [...prev.filter((t) => t.id !== newTag.id), newTag])}
       />
     </section>
   );

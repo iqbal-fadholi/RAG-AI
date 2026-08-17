@@ -24,6 +24,7 @@ export function useAdminData() {
   // Modals state
   const [showCreateRoleModal, setShowCreateRoleModal] = useState(false);
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+  const [showCreateTagModal, setShowCreateTagModal] = useState(false);
   const [selectedRoleForTags, setSelectedRoleForTags] = useState<Role | null>(null);
 
   const showNotification = (msg: string) => {
@@ -181,6 +182,23 @@ export function useAdminData() {
     }
   };
 
+  const handleCreateTag = async (name: string) => {
+    if (!name.trim()) return;
+
+    setSaving(true);
+    try {
+      await adminApi.createTag({ name: name.trim() });
+      setShowCreateTagModal(false);
+      showNotification(`Tag "${name}" created successfully`);
+      await loadData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create tag");
+      throw err;
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleDeleteTag = async (tagId: string, tagName: string) => {
     if (!confirm(`Are you sure you want to delete tag "${tagName}"? It will be removed from all documents and roles.`)) return;
 
@@ -221,6 +239,8 @@ export function useAdminData() {
     setShowCreateRoleModal,
     showCreateUserModal,
     setShowCreateUserModal,
+    showCreateTagModal,
+    setShowCreateTagModal,
     selectedRoleForTags,
     setSelectedRoleForTags,
     handleRoleChange,
@@ -230,6 +250,7 @@ export function useAdminData() {
     handleCreateRole,
     handleDeleteRole,
     handleSaveRoleTags,
+    handleCreateTag,
     handleDeleteTag,
   };
 }

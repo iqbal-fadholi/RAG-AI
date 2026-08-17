@@ -116,6 +116,19 @@ export async function fetchTags(): Promise<{ id: string; name: string }[]> {
   return res.json();
 }
 
+export async function createTag(name: string): Promise<{ id: string; name: string }> {
+  const res = await fetch(`${API_URL}/ingest/tags`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || err.message || "Failed to create tag");
+  }
+  return res.json();
+}
+
 export async function updateDocumentTags(id: string, tagIds: string[]) {
   const res = await fetch(`${API_URL}/ingest/files/${id}/tags`, {
     method: "PUT",
@@ -229,6 +242,19 @@ export const adminApi = {
   async getTags() {
     const res = await fetch(`${API_URL}/admin/tags`, { headers: { ...getAuthHeaders() } });
     if (!res.ok) throw new Error("Failed to fetch tags");
+    return res.json();
+  },
+
+  async createTag(data: { name: string }) {
+    const res = await fetch(`${API_URL}/admin/tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || err.message || "Failed to create tag");
+    }
     return res.json();
   },
 
