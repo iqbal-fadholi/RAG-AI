@@ -216,7 +216,7 @@ sequenceDiagram
 - **Node.js**: `v20.x` or `v22.x`
 - **Python**: `3.10` or `3.11` (for Docling microservice)
 - **Container Engine**: [Podman](https://podman.io/) (recommended) or [Docker](https://www.docker.com/)
-- **Google Gemini API Key**: Obtainable from [Google AI Studio](https://aistudio.google.com/)
+- **LLM API Key**: [Google AI Studio](https://aistudio.google.com/) for Gemini OR [OpenAI Platform](https://platform.openai.com/) / local Ollama / Groq / DeepSeek for OpenAI-compatible models
 
 ### Environment Variables Matrix
 
@@ -228,9 +228,16 @@ cp backend/.env.example backend/.env
 
 | Variable | Type | Default | Description |
 | :--- | :---: | :---: | :--- |
+| `LLM_PROVIDER` | String | `gemini` | Chat & reasoning provider: `gemini` or `openai` |
+| `EMBEDDING_PROVIDER` | String | `gemini` | Vector embedding provider: `gemini` or `openai` |
+| `GOOGLE_API_KEY` | String | *Conditional* | Required if `LLM_PROVIDER` or `EMBEDDING_PROVIDER` is `gemini` |
+| `GOOGLE_MODEL` | String | `gemini-3.1-flash-lite` | Gemini model for generation and reranking |
+| `OPENAI_API_KEY` | String | *Conditional* | Required if `LLM_PROVIDER` or `EMBEDDING_PROVIDER` is `openai` (optional for local Ollama) |
+| `OPENAI_BASE_URL` | URL | *Optional* | Custom base URL (e.g. `http://localhost:11434/v1` for Ollama, `https://api.groq.com/openai/v1`, `https://api.deepseek.com/v1`) |
+| `OPENAI_MODEL` | String | `gpt-4o-mini` | OpenAI-compatible chat model name |
+| `OPENAI_EMBEDDING_MODEL` | String | `text-embedding-3-small` | OpenAI-compatible embedding model name |
+| `OPENAI_EMBEDDING_DIMENSIONS` | Number | `1536` | OpenAI vector embedding dimensions |
 | `PORT` | Number | `3000` | Express backend listening port |
-| `GOOGLE_API_KEY` | String | **Required** | Google Gemini API Key for embeddings and chat generation |
-| `GOOGLE_MODEL` | String | `gemini-3.1-flash-lite` | Gemini model variant used for generation and reranking |
 | `DOCLING_SERVICE_URL` | URL | `http://docling-service:8000` | URL of the Docling FastAPI microservice |
 | `DB_HOST` | String | `pgvector` / `localhost` | PostgreSQL host |
 | `DB_PORT` | Number | `5432` | PostgreSQL port |

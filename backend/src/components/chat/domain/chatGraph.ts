@@ -1,5 +1,4 @@
 import { StateGraph, END, START, Annotation } from "@langchain/langgraph";
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { z } from "zod";
@@ -11,7 +10,7 @@ import {
   SystemMessage,
 } from "@langchain/core/messages";
 import { getVectorStore } from "../../../libraries/db/pgvector.js";
-import { config } from "../../../libraries/config/index.js";
+import { getChatModel } from "../../../libraries/llm/llmFactory.js";
 import { getPostgresSaver, pool } from "../../../libraries/db/checkpoint.js";
 import { keywordSearch, getAccessibleFileIds } from "../../../libraries/db/documents.js";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
@@ -43,20 +42,17 @@ export const GraphState = Annotation.Root({
   }),
 });
 
-const llm = new ChatGoogleGenerativeAI({
-  apiKey: config.googleApiKey,
-  model: config.googleModel,
+const llm = getChatModel({
   temperature: 0,
   maxRetries: 3,
 });
 
-const gradingLlmBase = new ChatGoogleGenerativeAI({
-  apiKey: config.googleApiKey,
-  model: config.googleModel,
+const gradingLlmBase = getChatModel({
   temperature: 0,
   streaming: false,
   maxRetries: 3,
 });
+
 
 // 2. Nodes
 
